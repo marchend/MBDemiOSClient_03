@@ -6,7 +6,12 @@ struct LoginView: View {
 
     private let navyColor = Color(red: 0x1B / 255.0, green: 0x2A / 255.0, blue: 0x4A / 255.0)
 
-    init(onSignIn: @escaping (String, String) -> Void) {
+    /// The 3-arg `onSignIn` signature is mandated by the ticket's
+    /// acceptance criteria: `keepSignedIn` must be threaded down to
+    /// `AuthCoordinator.signIn(username:password:keepSignedIn:)`,
+    /// otherwise the refresh-token persistence branch is unreachable
+    /// from the UI.
+    init(onSignIn: @escaping (String, String, Bool) -> Void) {
         let vm = LoginViewModel()
         vm.onSignIn = onSignIn          // wire once, here — avoids .onAppear timing dependency
         _viewModel = StateObject(wrappedValue: vm)
@@ -14,10 +19,10 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Top strip ────────────────────────────────────────────────────
+            // ── Top strip ─────────────────────────────────────────────────────────────
             topStrip
 
-            // ── Scrollable body ──────────────────────────────────────────────
+            // ── Scrollable body ───────────────────────────────────────────────────────
             ScrollView {
                 VStack(spacing: 24) {
                     HexagonLogoView()
@@ -36,6 +41,7 @@ struct LoginView: View {
 
                     usernameField
                     passwordField
+                    keepSignedInToggle
 
                     ErrorBannerView(message: viewModel.errorMessage)
 
@@ -46,7 +52,7 @@ struct LoginView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // ── Footer ───────────────────────────────────────────────────────
+            // ── Footer ────────────────────────────────────────────────────────────────
             footer
         }
         .background(Color(.systemBackground))
@@ -140,6 +146,18 @@ struct LoginView: View {
         }
     }
 
+    /// "Keep me signed in" toggle. Bound to `viewModel.keepSignedIn`,
+    /// which is forwarded to `onSignIn` so the value reaches
+    /// `AuthCoordinator.signIn(username:password:keepSignedIn:)`.
+    private var keepSignedInToggle: some View {
+        Toggle(isOn: $viewModel.keepSignedIn) {
+            Text("Keep me signed in")
+                .font(.footnote)
+                .foregroundStyle(Color(.label))
+        }
+        .accessibilityIdentifier("keepSignedInToggle")
+    }
+
     private var signInButton: some View {
         Button {
             viewModel.signIn()
@@ -177,5 +195,5 @@ struct LoginView: View {
 }
 
 #Preview {
-    LoginView(onSignIn: { _, _ in })
+    LoginView(onSignIn: { _, _, _ in })
 }

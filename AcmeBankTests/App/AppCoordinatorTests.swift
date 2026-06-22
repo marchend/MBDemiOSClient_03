@@ -38,6 +38,26 @@ private final class SpyKeychainStore: KeychainStoring {
     }
 }
 
+/// Spy `AuthCoordinating` that records its inputs and returns a
+/// canned `AuthResult`. Lets `AppCoordinator.signIn` tests assert the
+/// credentials (including `keepSignedIn`) are forwarded verbatim AND
+/// that `session` flips on `.success`.
+private final class SpyAuthCoordinator: AuthCoordinating {
+    private(set) var signInCallCount = 0
+    private(set) var capturedUsername: String?
+    private(set) var capturedPassword: String?
+    private(set) var capturedKeepSignedIn: Bool?
+    var stubbedResult: AuthResult = .invalidCredentials
+
+    func signIn(username: String, password: String, keepSignedIn: Bool) async -> AuthResult {
+        signInCallCount += 1
+        capturedUsername = username
+        capturedPassword = password
+        capturedKeepSignedIn = keepSignedIn
+        return stubbedResult
+    }
+}
+
 private func makeSession(name: String = "Jane Doe", email: String = "jane@example.com") -> UserSession {
     return UserSession(
         userId: "00u-jane",
@@ -82,6 +102,63 @@ final class AppCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(coordinator.session, newSession,
                        "A second handleSignIn must overwrite, not append.")
+    }
+
+    // MARK: - signIn (AuthCoordinator delegation seam)
+
+    func test_signIn_forwardsCredentialsAndKeepSignedInToAuthCoordinator() async {
+        let auth = SpyAuthCoordinator()
+        auth.stubbedResult = .invalidCredentials // doesn't matter for forwarding
+        let coordinator = AppCoordinator(keychain: SpyKeychainStore(), auth: auth)
+
+        _ = await coordinator.signIn(username: "alice@acmebank.com", password: "p@ss", keepSignedIn: true)
+
+        XCTAssertEqual(auth.signInCallCount, 1)
+        XCTAssertEqual(auth.capturedUsername, "alice@acmebank.com")
+        XCTAssertEqual(auth.capturedPassword, "p@ss")
+        XCTAssertEqual(auth.capturedKeepSignedIn, true,
+                       "keepSignedIn MUST reach AuthCoordinator — that's the AC-mandated seam.")
+    }
+
+    func test_signIn_onSuccess_flipsSessionToReturnedUser() async {
+        let auth = SpyAuthCoordinator()
+        let session = makeSession()
+        auth.stubbedResult = .success(session, refreshToken: "rt-xyz")
+        let coordinator = AppCoordinator(keychain: SpyKeychainStore(), auth: auth)
+
+        let result = await coordinator.signIn(username: "u", password: "p", keepSignedIn: false)
+
+        XCTAssertEqual(result, .success(session, refreshToken: "rt-xyz"))
+        XCTAssertEqual(coordinator.session, session,
+                       "On .success, AppCoordinator must flip its session so the root view swaps to LandingView.")
+    }
+
+    func test_signIn_onFailure_leavesSessionNil() async {
+        let auth = SpyAuthCoordinator()
+        auth.stubbedResult = .invalidCredentials
+        let coordinator = AppCoordinator(keychain: SpyKeychainStore(), auth: auth)
+
+        let result = await coordinator.signIn(username: "u", password: "p", keepSignedIn: false)
+
+        XCTAssertEqual(result, .invalidCredentials)
+        XCTAssertNil(coordinator.session,
+                     "On a non-success AuthResult, AppCoordinator must NOT flip session — the root stays on LoginView.")
+    }
+
+    func test_signIn_withNoAuthInjected_returnsNotConfigured() async {
+        // Defensive case for tests/preview code that build an
+        // AppCoordinator without standing up the full auth stack. The
+        // production composition root always injects an auth coordinator.
+        let coordinator = AppCoordinator(keychain: SpyKeychainStore(), auth: nil)
+
+        let result = await coordinator.signIn(username: "u", password: "p", keepSignedIn: false)
+
+        if case .notConfigured = result {
+            // expected
+        } else {
+            XCTFail("Expected .notConfigured when no AuthCoordinator is injected, got \(result)")
+        }
+        XCTAssertNil(coordinator.session)
     }
 
     // MARK: - signOut
