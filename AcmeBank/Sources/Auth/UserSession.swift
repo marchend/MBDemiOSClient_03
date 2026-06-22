@@ -26,3 +26,23 @@ struct UserSession: Codable, Equatable {
     /// `UIDevice.current.name` snapshot at sign-in time.
     let deviceName: String
 }
+
+// MARK: - Redacted string conversions
+
+/// `accessToken` is a bearer credential. The default synthesized
+/// reflection used by `String(describing:)`, `"\(session)"`, `dump`,
+/// and most crash-reporter SDKs would otherwise emit it in cleartext.
+/// Both conformances below replace it with `[REDACTED]` so that a
+/// stray `print(session)` or a crash log never leaks a working bearer
+/// token. The token is still accessible via the typed `accessToken`
+/// property when callers genuinely need it (e.g. building an
+/// `Authorization` header).
+extension UserSession: CustomStringConvertible, CustomDebugStringConvertible {
+    var description: String {
+        return "UserSession(userId: \(userId), displayName: \(displayName), email: \(email), accessToken: [REDACTED], authTimestamp: \(authTimestamp), deviceName: \(deviceName))"
+    }
+
+    var debugDescription: String {
+        return description
+    }
+}

@@ -48,11 +48,21 @@ final class KeychainStoreTests: XCTestCase {
         }
     }
 
+    // MARK: - Account shape
+
+    func testAccountEnumDoesNotCarryDeadIDTokenSlot() {
+        // The architecture never persists the raw ID-token JWT, so the
+        // enum was trimmed to two slots. Guard against a future regression
+        // that re-introduces a dead `idToken` account.
+        XCTAssertEqual(Set(KeychainStore.Account.allCases.map(\.rawValue)),
+                       ["accessToken", "refreshToken"],
+                       "KeychainStore.Account must contain only the slots the architecture actually reads")
+    }
+
     // MARK: - Round-trip
 
     func testStoreLoadClearRoundTrip() throws {
         try store.storeTokens(
-            idToken: "id-1",
             accessToken: "access-1",
             refreshToken: "refresh-1"
         )
@@ -67,11 +77,11 @@ final class KeychainStoreTests: XCTestCase {
 
     func testStoreWithNilRefreshTokenClearsPreviousRefreshToken() throws {
         // First call seeds a refresh token.
-        try store.storeTokens(idToken: "id", accessToken: "a", refreshToken: "old-refresh")
+        try store.storeTokens(accessToken: "a", refreshToken: "old-refresh")
         XCTAssertEqual(try store.loadRefreshToken(), "old-refresh")
 
         // Second call (keepSignedIn=false) must wipe it.
-        try store.storeTokens(idToken: "id", accessToken: "a", refreshToken: nil)
+        try store.storeTokens(accessToken: "a", refreshToken: nil)
         XCTAssertNil(try store.loadRefreshToken(),
                      "storeTokens(refreshToken: nil) must delete a previously-saved refresh token")
     }
@@ -79,8 +89,8 @@ final class KeychainStoreTests: XCTestCase {
     // MARK: - overwrite semantics
 
     func testRepeatedStoreOverwritesExistingValues() throws {
-        try store.storeTokens(idToken: "id-1", accessToken: "a-1", refreshToken: "r-1")
-        try store.storeTokens(idToken: "id-2", accessToken: "a-2", refreshToken: "r-2")
+        try store.storeTokens(accessToken: "a-1", refreshToken: "r-1")
+        try store.storeTokens(accessToken: "a-2", refreshToken: "r-2")
         XCTAssertEqual(try store.loadRefreshToken(), "r-2",
                        "second storeTokens should overwrite the first")
     }

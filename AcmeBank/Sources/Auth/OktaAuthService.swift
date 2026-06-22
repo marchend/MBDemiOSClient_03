@@ -202,9 +202,24 @@ final class LiveDirectAuthDriver: DirectAuthFlowDriver {
     private static func translate(_ status: DirectAuthenticationFlow.Status) -> RawDirectAuthOutcome {
         switch status {
         case let .success(token):
-            let idTokenRaw = token.idToken?.rawValue ?? ""
+            // Guard explicitly against a "success" token-set that
+            // omits the ID token. This happens when the Okta org
+            // doesn't issue an `openid`-scoped ID token (e.g. the
+            // `openid` scope is missing from `OktaConfig.scopes`, or
+            // an org configuration suppresses it). Without this guard
+            // we'd coerce to an empty string, fail the JWT segment
+            // check inside `IDTokenClaims.decode`, and surface the
+            // result as `.networkError` \u2014 a user typing correct
+            // credentials would see a "couldn't connect" banner with
+            // no way to learn the real cause. `.unknown` keeps the
+            // distinction at the seam so a future debug log can name
+            // the configuration problem; the UI mapping still ends
+            // up at "please retry" via `OktaAuthService`'s switch.
+            guard let raw = token.idToken?.rawValue, !raw.isEmpty else {
+                return .unknown
+            }
             return .success(
-                idToken: idTokenRaw,
+                idToken: raw,
                 accessToken: token.accessToken,
                 refreshToken: token.refreshToken
             )

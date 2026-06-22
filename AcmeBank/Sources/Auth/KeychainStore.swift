@@ -10,16 +10,26 @@ import Security
 /// (-34018). Every query dictionary we construct sets that flag.
 ///
 /// **Per-token accounts.** A single service (`com.acmebank.auth`) holds
-/// up to three accounts: `idToken`, `accessToken`, `refreshToken`. We
-/// use `SecItemUpdate` semantics by deleting + adding so a re-sign-in
+/// up to two accounts: `accessToken`, `refreshToken`. We use
+/// `SecItemUpdate` semantics by deleting + adding so a re-sign-in
 /// always overwrites stale material cleanly.
+///
+/// **Why no `idToken` slot.** `AuthCoordinator` only ever sees the
+/// already-decoded `UserSession` claims, not the raw ID-token JWT, so
+/// it has nothing meaningful to persist under an `idToken` account.
+/// Carrying an empty `idToken` slot just to keep the symmetry would
+/// leave a dead Keychain item that future `loadIdToken()` callers or
+/// `Account.allCases` iterations would have to special-case as
+/// "always empty". Cleaner to remove the slot now \u2014 if a future
+/// PR genuinely needs the raw ID token (e.g. for `id_token_hint` on
+/// logout), it can re-add the account at the same time the raw token
+/// becomes available at the call site.
 ///
 /// Tests inject a unique service name via the initializer so a parallel
 /// test run never collides on the shared default service.
 final class KeychainStore {
     /// `kSecAttrAccount` values stored under the shared service.
     enum Account: String, CaseIterable {
-        case idToken
         case accessToken
         case refreshToken
     }
@@ -43,12 +53,12 @@ final class KeychainStore {
 
     // MARK: - Public API
 
-    /// Persist all three tokens. `refreshToken` is nil when the user
-    /// did NOT tick "keep me signed in" \u2014 in that case any previously
-    /// stored refresh token is also deleted so we cannot accidentally
-    /// resume the session from stale state.
-    func storeTokens(idToken: String, accessToken: String, refreshToken: String?) throws {
-        try save(idToken, for: .idToken)
+    /// Persist the access token and (optionally) the refresh token.
+    /// `refreshToken` is nil when the user did NOT tick "keep me
+    /// signed in" \u2014 in that case any previously stored refresh
+    /// token is also deleted so we cannot accidentally resume the
+    /// session from stale state.
+    func storeTokens(accessToken: String, refreshToken: String?) throws {
         try save(accessToken, for: .accessToken)
         if let refreshToken = refreshToken {
             try save(refreshToken, for: .refreshToken)

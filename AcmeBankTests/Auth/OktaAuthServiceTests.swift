@@ -133,4 +133,32 @@ final class OktaAuthServiceTests: XCTestCase {
             XCTFail("Expected non-success result for corrupt JWT, got .success")
         }
     }
+
+    // MARK: - empty ID token on success path
+
+    func testEmptyIDTokenOnSuccessPathIsNotMistakenForSuccess() async {
+        // Belt-and-braces for the IdP misconfiguration case: if a
+        // future driver were to surface an empty idToken in the
+        // `.success` outcome (e.g. the `openid` scope is missing from
+        // `OktaConfig.scopes`), `OktaAuthService.buildSession` must NOT
+        // return `.success` with a `UserSession` built from junk claims.
+        // It must surface a non-success AuthResult instead.
+        //
+        // The `LiveDirectAuthDriver.translate` guard already collapses
+        // an empty-rawValue ID token to `.unknown` upstream of this
+        // service, so in practice this branch is reached only via a
+        // misbehaving custom driver \u2014 but the test pins down the
+        // contract regardless.
+        let driver = StubDirectAuthDriver(outcome: .success(
+            idToken: "",
+            accessToken: "access",
+            refreshToken: nil
+        ))
+        let svc = OktaAuthService(driver: driver)
+
+        let result = await svc.signIn(username: "x", password: "y")
+        if case .success = result {
+            XCTFail("Empty ID token must not produce .success, got \(result)")
+        }
+    }
 }

@@ -56,13 +56,16 @@ final class AuthCoordinator: AuthCoordinating {
         }
 
         // We do NOT have the raw ID token here \u2014 `UserSession` carries
-        // the decoded claims, not the JWT. Persist the access token
-        // (used by every BFF call) and the refresh token (long-lived
-        // resume material). The ID token is regenerated on every
-        // refresh and not worth caching for this app's needs.
+        // the decoded claims, not the JWT \u2014 so we only persist the
+        // access token (used by every BFF call) and the refresh token
+        // (long-lived resume material). The `KeychainStore.Account`
+        // enum was trimmed to match: it no longer carries an `idToken`
+        // slot. The ID token is regenerated on every refresh and not
+        // worth caching for this app's needs; if a future PR needs the
+        // raw JWT (e.g. for `id_token_hint`), it should re-introduce
+        // the slot at the same time it threads the raw token here.
         do {
             try keychain.storeTokens(
-                idToken: "",
                 accessToken: session.accessToken,
                 refreshToken: keepSignedIn ? refreshToken : nil
             )

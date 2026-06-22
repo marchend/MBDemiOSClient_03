@@ -101,7 +101,7 @@ final class AuthCoordinatorTests: XCTestCase {
     func testSuccessWithoutKeepSignedInClearsAnyPriorRefreshToken() async throws {
         // Seed a prior refresh token as if a previous "keep me signed in"
         // session had been recorded.
-        try keychain.storeTokens(idToken: "", accessToken: "old-access", refreshToken: "stale-refresh")
+        try keychain.storeTokens(accessToken: "old-access", refreshToken: "stale-refresh")
         XCTAssertEqual(try keychain.loadRefreshToken(), "stale-refresh")
 
         let service = MockAuthService(result: .success(makeSession(), refreshToken: "new-refresh"))
