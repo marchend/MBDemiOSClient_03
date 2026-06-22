@@ -24,14 +24,15 @@ protocol AuthCoordinating {
 ///    sign-in the IdP already accepted.)
 final class AuthCoordinator: AuthCoordinating {
     private let service: DirectAuthenticating
-    private let keychain: KeychainStore
+    private let keychain: KeychainStoring
     private let configLoader: () -> OktaConfig
 
     /// Designated initializer. Tests inject a mock `service`, an
-    /// in-memory `keychain`, and a stub `configLoader`.
+    /// in-memory `keychain` (via the `KeychainStoring` protocol), and a
+    /// stub `configLoader`.
     init(
         service: DirectAuthenticating,
-        keychain: KeychainStore,
+        keychain: KeychainStoring,
         configLoader: @escaping () -> OktaConfig = { OktaConfig.load() }
     ) {
         self.service = service

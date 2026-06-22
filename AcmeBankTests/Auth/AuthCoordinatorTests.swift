@@ -31,13 +31,22 @@ private func makeSession(accessToken: String = "access-123") -> UserSession {
 
 final class AuthCoordinatorTests: XCTestCase {
 
-    private var keychain: KeychainStore!
+    /// In-memory keychain conforming to `KeychainStoring`.
+    ///
+    /// We deliberately do NOT use a real `KeychainStore` here: the CI
+    /// simulator runs `CODE_SIGNING_ALLOWED=NO`, which means
+    /// `AcmeBank.entitlements` is not embedded and every SecItem call
+    /// returns -34018 (`errSecMissingEntitlement`). The
+    /// `kSecUseDataProtectionKeychain: true` flag does NOT bypass the
+    /// entitlement check — it only chooses between legacy and modern
+    /// keychains. Injecting `InMemoryKeychainStore` lets us assert on
+    /// `loadRefreshToken()` directly without hitting the simulator's
+    /// keychain.
+    private var keychain: InMemoryKeychainStore!
 
     override func setUp() {
         super.setUp()
-        // Per-test isolated service name so parallel test runs don't
-        // collide on the shared `com.acmebank.auth` keychain.
-        keychain = KeychainStore(service: "com.acmebank.auth.tests.\(UUID().uuidString)")
+        keychain = InMemoryKeychainStore()
         try? keychain.clear()
     }
 

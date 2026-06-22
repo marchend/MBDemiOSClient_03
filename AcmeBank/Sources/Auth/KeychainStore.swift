@@ -1,6 +1,28 @@
 import Foundation
 import Security
 
+/// Abstraction over the secure token storage used by `AuthCoordinator`.
+///
+/// **Why a protocol.** On the CI simulator with `CODE_SIGNING_ALLOWED=NO`
+/// the `AcmeBank.entitlements` file is not embedded in the binary
+/// (there is no code-signing pass to apply it). Without an
+/// `application-identifier` entitlement, every `SecItemAdd` /
+/// `SecItemCopyMatching` / `SecItemDelete` call returns
+/// `errSecMissingEntitlement` (-34018) — EVEN with
+/// `kSecUseDataProtectionKeychain: true` set on the query (that flag
+/// only chooses between the legacy file-based and modern data-
+/// protection keychains; it does NOT bypass the entitlement check).
+///
+/// Production code uses the concrete `KeychainStore`. Tests that need
+/// to exercise `AuthCoordinator`'s persistence branches inject an
+/// `InMemoryKeychainStore` (in the test target) so they don't depend on
+/// SecItem being callable on the simulator.
+protocol KeychainStoring: AnyObject {
+    func storeTokens(accessToken: String, refreshToken: String?) throws
+    func loadRefreshToken() throws -> String?
+    func clear() throws
+}
+
 /// Persists Okta token material to the data-protection Keychain.
 ///
 /// **Why data-protection keychain.** On a `CODE_SIGNING_ALLOWED=NO`
@@ -27,7 +49,7 @@ import Security
 ///
 /// Tests inject a unique service name via the initializer so a parallel
 /// test run never collides on the shared default service.
-final class KeychainStore {
+final class KeychainStore: KeychainStoring {
     /// `kSecAttrAccount` values stored under the shared service.
     enum Account: String, CaseIterable {
         case accessToken
