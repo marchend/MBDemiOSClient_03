@@ -6,9 +6,9 @@ import SwiftUI
 /// `@StateObject` and renders either `LoginView` (no session) or
 /// `LandingView` (session present). The coordinator is also injected
 /// into the SwiftUI environment via `.environmentObject(_:)` so that
-/// `LoginView` (wired in a later PR) can pull it with
-/// `@EnvironmentObject` to call `signIn` / `handleSignIn` — wiring the
-/// success callback in this file again would force a re-edit of the
+/// `LoginView` can pull it with `@EnvironmentObject` to call
+/// `handleSignIn(_:)` on a successful sign-in — wiring the success
+/// callback in this file again would force a re-edit of the
 /// composition root every time the login flow grows.
 ///
 /// **Why this file owns the @main and not `AcmeBank/App/AcmeBankApp.swift`.**
@@ -36,10 +36,11 @@ struct AcmeBankApp: App {
     /// need the same object visible to `attemptSilentRefreshOnLaunch`.
     private static let sharedKeychain: KeychainStoring = KeychainStore()
 
-    /// Single `AuthCoordinator` shared by `AppCoordinator`. Built at
-    /// the composition root so the navigation coordinator and any
-    /// future caller that needs to invoke the Okta exchange resolve to
-    /// the same instance (and therefore the same `KeychainStoring`).
+    /// Single `AuthCoordinator` shared by `AppCoordinator` AND
+    /// `LoginView`'s ViewModel. Built at the composition root so the
+    /// navigation coordinator, the login form, and any future caller
+    /// that needs to invoke the Okta exchange resolve to the same
+    /// instance (and therefore the same `KeychainStoring`).
     ///
     /// The underlying `OktaAuthService` is built from `OktaConfig.load()`:
     /// when the four `OKTA_*` env vars are not present, `AuthCoordinator`
@@ -89,11 +90,11 @@ struct AcmeBankApp: App {
     /// of the root scene.
     ///
     /// `AppCoordinator` receives the shared keychain reference AND the
-    /// shared `AuthCoordinating`, so the sign-in path is:
-    /// `LoginView.onSignIn → AppCoordinator.signIn → AuthCoordinator.signIn`.
-    /// The next PR's `LoginView` wiring just hands the credentials to
-    /// `coordinator.signIn(...)` — no token-persistence logic leaks
-    /// into the composition root.
+    /// shared `AuthCoordinating`. The sign-in path is:
+    /// `LoginView.signIn → LoginViewModel.signIn → AuthCoordinator.signIn`,
+    /// then on success the View calls `AppCoordinator.handleSignIn`
+    /// (pulled from `@EnvironmentObject`) to flip the root view to
+    /// `LandingView`.
     @StateObject private var coordinator = AppCoordinator(
         keychain: AcmeBankApp.sharedKeychain,
         auth: AcmeBankApp.sharedAuth
@@ -117,14 +118,12 @@ struct AcmeBankApp: App {
         if let session = coordinator.session {
             LandingView(session: session)
         } else {
-            // PR 4 will replace the no-op closure with a real wiring
-            // that calls `coordinator.signIn(username:password:keepSignedIn:)`
-            // from the `@EnvironmentObject`-injected coordinator. This
-            // PR only ships the composition root; the closure already
-            // matches the AC-mandated 3-arg signature so that next-PR
-            // wiring does not require editing the already-reviewed
-            // `LoginView` API surface.
-            LoginView(onSignIn: { _, _, _ in })
+            // PR 4 wires the production sign-in path: the View pulls
+            // `AppCoordinator` via `@EnvironmentObject` and calls
+            // `viewModel.signIn(...) → appCoordinator.handleSignIn(...)`
+            // inside its Sign In button action. The composition root
+            // only has to hand the View the shared `AuthCoordinating`.
+            LoginView(auth: AcmeBankApp.sharedAuth)
         }
     }
 

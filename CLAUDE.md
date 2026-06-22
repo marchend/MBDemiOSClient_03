@@ -46,6 +46,7 @@ AcmeBank/
   ContentView.swift             # Hello World placeholder (implemented)
   Info.plist                    # Committed plist with __*_UNSET__ defaults for Okta keys (implemented)
   Sources/
+    AcmeBankApp.swift           # @main composition root; injects AppCoordinator into env (implemented)
     Auth/
       OktaConfig.swift          # Runtime view of injected Okta tenant config (implemented)
       UserSession.swift         # Codable value type — six fields, NO refresh token (implemented)
@@ -54,6 +55,15 @@ AcmeBank/
       OktaAuthService.swift     # DirectAuthenticating + LiveDirectAuthDriver (only file importing OktaDirectAuth) (implemented)
       KeychainStore.swift       # SecItem* wrappers, kSecUseDataProtectionKeychain on every query (implemented)
       AuthCoordinator.swift     # Orchestrates OktaAuthService + KeychainStore; keepSignedIn gate (implemented)
+    App/
+      AppCoordinator.swift      # Owns `@Published session`; handleSignIn / signOut / signIn(AuthCoordinating) (implemented)
+    Landing/
+      LandingView.swift         # Post-sign-in landing — "Welcome, <displayName>" (implemented)
+    Login/
+      LoginView.swift           # Sign-in form; pulls AppCoordinator via @EnvironmentObject (implemented PR 4)
+      LoginViewModel.swift      # ObservableObject; injected AuthCoordinating; signIn → UserSession? (implemented PR 4)
+      ErrorBannerView.swift     # Inline error banner; hidden when message is nil/empty (implemented PR 4)
+      HexagonLogoView.swift     # Decorative logo used by LoginView (implemented)
   Core/
     Networking/                 # APIClient, APIRouter, APIError, RequestInterceptor (deferred)
     Notifications/              # AppNotification, NotificationPublisher (deferred)
@@ -65,7 +75,6 @@ AcmeBank/
     Remote/                     # APIRepository implementations (deferred)
     Mock/                       # MockRepository implementations (deferred)
   Features/
-    Login/                      # LoginView, LoginViewModel, LoginCoordinator (deferred)
     Home/                       # HomeView, HomeViewModel, HomeCoordinator (deferred)
     Accounts/                   # (deferred)
     Transfer/                   # (deferred)
@@ -74,6 +83,7 @@ AcmeBank/
   Resources/                    # Assets.xcassets, PrivacyInfo.xcprivacy (stub implemented)
 AcmeBankTests/                  # XCTest unit tests
 AcmeBankUITests/                # XCUITest critical-flow tests
+  SignInToLandingUITests.swift  # End-to-end Okta sign-in → Landing; XCTSkipUnless OKTA_ISSUER (implemented PR 4)
 ```
 
 ## Planned Architecture
@@ -133,8 +143,24 @@ AppCoordinator  ← observed by RootView
   persists tokens via `KeychainStore`. Keychain writes are CACHE: a failure
   is logged and swallowed and does NOT invalidate the sign-in the IdP just
   accepted.
-- Sign-in / sign-out / refresh wiring into the UI (`LoginView`, `RequestInterceptor`,
-  `AppNotification.sessionExpired`) — deferred to a future PR.
+
+### Login UI wiring (implemented in PR 4)
+- `LoginView` is the only consumer of `LoginViewModel`; both files are owned by
+  the Login PR and edited as a unit.
+- `LoginViewModel` is constructed with an injected `AuthCoordinating`. Its
+  `signIn(username:password:keepSignedIn:) async -> UserSession?` sets
+  `isSigningIn`, calls the coordinator, maps the four `AuthResult` cases to
+  exact user-facing copy via `errorMessage`, and returns the decoded session
+  on success.
+- `LoginView` pulls `AppCoordinator` via `@EnvironmentObject` (registered by
+  `AcmeBankApp`) and on a non-nil signIn return calls
+  `appCoordinator.handleSignIn(session)`. There is exactly ONE navigation
+  mechanism — the `AppCoordinator.@Published session` flip — and PR 4 must
+  never invent a second one (no manual root-view swap, no NavigationLink,
+  no NotificationCenter post for the sign-in transition).
+- `ErrorBannerView` renders nothing when `message` is nil or empty; otherwise
+  a light-red row with `exclamationmark.triangle.fill`. Banner clears via
+  `LoginViewModel.onFieldEdit()` on the next keystroke in either field.
 
 ### Networking Layer (deferred — future PR)
 - `APIClient` wraps `URLSession`; decodes with `.convertFromSnakeCase` + `.iso8601`.
@@ -156,6 +182,10 @@ AppCoordinator  ← observed by RootView
 - **XCTest**: every ViewModel has a `*Tests.swift`; ≥80% line coverage on `Core/` and `Features/`.
 - **XCUITest**: critical flows only (Login, Transfer, Sign-out); use accessibility identifiers, not visible text.
 - Mock repositories injected via constructor; `XCUIApplication().launchArguments += ["-UITestMode", "YES"]` for UI tests.
+- End-to-end XCUITests that need real Okta credentials gate with
+  `XCTSkipUnless(ProcessInfo.processInfo.environment["OKTA_ISSUER"]?.isEmpty == false, ...)`
+  in `setUpWithError` and forward the `OKTA_*` vars to `app.launchEnvironment` so
+  the simulator process sees them too.
 
 ### Keychain + CI Note (implemented — entitlements stub in this PR)
 Any Keychain query MUST include `kSecUseDataProtectionKeychain: true`. This is required
@@ -165,9 +195,7 @@ for CI (`CODE_SIGNING_ALLOWED=NO` simulator) — without this flag `SecItem*` re
 through, so the flag is present by construction.
 
 ## Deferred Work
-- Login screen (`LoginView`, `LoginViewModel`, `LoginCoordinator`) — future PR
 - Home Dashboard + BFF integration (`HomeView`, `HomeViewModel`, `HomeCoordinator`) — future PR
-- MVVM + Coordinator wiring (`AppCoordinator`, `RootView`, `TabBarCoordinator`) — future PR
 - Token refresh (`AuthService.refreshTokenIfNeeded`, `RequestInterceptor`, `AppNotification.sessionExpired`) — future PR
 - Networking layer (`APIClient`, `APIRouter`, `APIError`, `RequestInterceptor`) — future PR
 - Domain models (`Account`, `Transaction`, `Customer`, `TransferRequest`) — future PR
@@ -177,7 +205,6 @@ through, so the flag is present by construction.
 - Transfer, Cards, Accounts, Bills features — future PRs
 - SwiftLint config (`.swiftlint.yml`) — future PR
 - CI workflow (`ios-build.yml`, xcconfig, `-warnings-as-errors`) — future PR
-- XCUITest critical-flow tests — future PRs
 
 ## Git Workflow
 
