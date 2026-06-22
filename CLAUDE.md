@@ -48,8 +48,13 @@ AcmeBank/
   Sources/
     Auth/
       OktaConfig.swift          # Runtime view of injected Okta tenant config (implemented)
+      UserSession.swift         # Codable value type — six fields, NO refresh token (implemented)
+      IDTokenClaims.swift       # JWT-payload base64URL decoder (implemented)
+      AuthResult.swift          # Closed enum — success / invalidCredentials / networkError / mfaUnsupported / notConfigured (implemented)
+      OktaAuthService.swift     # DirectAuthenticating + LiveDirectAuthDriver (only file importing OktaDirectAuth) (implemented)
+      KeychainStore.swift       # SecItem* wrappers, kSecUseDataProtectionKeychain on every query (implemented)
+      AuthCoordinator.swift     # Orchestrates OktaAuthService + KeychainStore; keepSignedIn gate (implemented)
   Core/
-    Auth/                       # AuthService, KeychainStore, UserSession (deferred)
     Networking/                 # APIClient, APIRouter, APIError, RequestInterceptor (deferred)
     Notifications/              # AppNotification, NotificationPublisher (deferred)
     Extensions/                 # Decimal+Currency, Date+Greeting, String+Initials (deferred)
@@ -111,11 +116,25 @@ AppCoordinator  ← observed by RootView
   wired up?" must probe `ProcessInfo.processInfo.environment` directly, not
   call `OktaConfig.load()` from the UI-test target.
 
-### Authentication — Okta OIDC (deferred — future PR)
-- `AuthService` implements `signIn()`, `signOut()`, `refreshTokenIfNeeded()`.
-- Tokens persisted to Keychain via `KeychainStore`.
-- `UserSession` value type passed through coordinators; never stored in `UserDefaults` or as a global singleton.
-- `RequestInterceptor` calls `refreshTokenIfNeeded()` before every request; on failure posts `AppNotification.sessionExpired`.
+### Authentication — Okta OIDC (implemented in PR 2 — headless layer)
+- `OktaAuthService` is the only file that imports `OktaDirectAuth`. It exposes
+  the SDK-agnostic `DirectAuthenticating` protocol and an internal
+  `DirectAuthFlowDriver` seam returning the neutral `RawDirectAuthOutcome`
+  enum — so unit tests stub the driver without importing the SDK and SDK
+  version churn is contained to one file.
+- `OktaAuthService` calls `DirectAuthenticationFlow.start(username, with: .password(password))`
+  verbatim — positional username, `with:` factor, NO `.primary` wrapper.
+- `UserSession` is a `Codable` value type with exactly six fields
+  (`userId`, `displayName`, `email`, `accessToken`, `authTimestamp`,
+  `deviceName`) and NO refresh token. The refresh token lives in the
+  Keychain and travels separately through `AuthResult.success(_, refreshToken:)`.
+- `AuthCoordinator` short-circuits to `.notConfigured` when `OktaConfig.load()`
+  is `.notConfigured`, delegates to `OktaAuthService`, and on `.success`
+  persists tokens via `KeychainStore`. Keychain writes are CACHE: a failure
+  is logged and swallowed and does NOT invalidate the sign-in the IdP just
+  accepted.
+- Sign-in / sign-out / refresh wiring into the UI (`LoginView`, `RequestInterceptor`,
+  `AppNotification.sessionExpired`) — deferred to a future PR.
 
 ### Networking Layer (deferred — future PR)
 - `APIClient` wraps `URLSession`; decodes with `.convertFromSnakeCase` + `.iso8601`.
@@ -142,12 +161,14 @@ AppCoordinator  ← observed by RootView
 Any Keychain query MUST include `kSecUseDataProtectionKeychain: true`. This is required
 for CI (`CODE_SIGNING_ALLOWED=NO` simulator) — without this flag `SecItem*` returns
 `errSecMissingEntitlement` (-34018) even though the entitlements file is present.
+`KeychainStore.baseQuery(for:)` is the single building block every operation goes
+through, so the flag is present by construction.
 
 ## Deferred Work
-- Okta OIDC authentication (`AuthService`, `KeychainStore`, `UserSession`) — future PR (PR 1 ships the config plumbing only)
 - Login screen (`LoginView`, `LoginViewModel`, `LoginCoordinator`) — future PR
 - Home Dashboard + BFF integration (`HomeView`, `HomeViewModel`, `HomeCoordinator`) — future PR
 - MVVM + Coordinator wiring (`AppCoordinator`, `RootView`, `TabBarCoordinator`) — future PR
+- Token refresh (`AuthService.refreshTokenIfNeeded`, `RequestInterceptor`, `AppNotification.sessionExpired`) — future PR
 - Networking layer (`APIClient`, `APIRouter`, `APIError`, `RequestInterceptor`) — future PR
 - Domain models (`Account`, `Transaction`, `Customer`, `TransferRequest`) — future PR
 - Repository protocols + Mock/API implementations — future PR
