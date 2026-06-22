@@ -5,7 +5,7 @@ import SwiftUI
 /// The `onSignIn` closure will be replaced with real Okta auth in a future PR.
 struct ContentView: View {
     var body: some View {
-        LoginView(onSignIn: { _, _ in })
+        LoginView(onSignIn: { _, _, _ in })
     }
 }
 
