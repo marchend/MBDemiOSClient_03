@@ -1,12 +1,11 @@
 import SwiftUI
 
+/// Root content view for AcmeBank.
+/// Presents `LoginView` as the initial screen.
+/// The `onSignIn` closure will be replaced with real Okta auth in a future PR.
 struct ContentView: View {
     var body: some View {
-        Text("AcmeBank")
-            .font(.largeTitle)
-            .fontWeight(.bold)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground))
+        LoginView(onSignIn: { _, _ in })
     }
 }
 
