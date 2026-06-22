@@ -27,12 +27,93 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO
 ```
 
+## Okta build configuration
+
+The Okta tenant values are NEVER committed. They are read from four shell
+environment variables at build time and written into `AcmeBank/Info.plist`
+by the `Scripts/inject_okta_config.sh` Run Script build phase. The app
+reads them at runtime via `OktaConfig.load()`.
+
+| Env var              | Info.plist key      | Example                                       |
+|----------------------|---------------------|-----------------------------------------------|
+| `OKTA_ISSUER`        | `OktaIssuer`        | `https://acme.okta.com/oauth2/default`        |
+| `OKTA_CLIENT_ID`     | `OktaClientID`      | `0oaXXXXXXXXXXXXXXXXX`                        |
+| `OKTA_REDIRECT_URI`  | `OktaRedirectURI`   | `com.acmebank.mobile:/callback`               |
+| `OKTA_SCOPES`        | `OktaScopes`        | `openid profile offline_access`               |
+
+If any of these is unset, the build still succeeds — the script writes a
+`__<NAME>_UNSET__` sentinel and `OktaConfig.load()` returns
+`.notConfigured(reason:)` at runtime so the auth layer can gate sign-in
+without crashing.
+
+### Three ways to make Xcode see the env vars
+
+Xcode's `PhaseScriptExecution` runs each build-phase script in a fresh
+non-interactive subshell. That subshell inherits the environment of the
+**process that launched Xcode**, NOT the variables you exported in a
+random Terminal tab afterwards. Pick the recipe that matches how you
+start Xcode:
+
+**1. Finder-launched Xcode (double-click `.xcodeproj` from Finder, or
+launch Xcode from the Dock):** use `launchctl setenv` so the per-user
+launchd domain (the parent of Finder-launched GUI apps) exports the var:
+
+```bash
+launchctl setenv OKTA_ISSUER       "https://acme.okta.com/oauth2/default"
+launchctl setenv OKTA_CLIENT_ID    "0oaXXXXXXXXXXXXXXXXX"
+launchctl setenv OKTA_REDIRECT_URI "com.acmebank.mobile:/callback"
+launchctl setenv OKTA_SCOPES       "openid profile offline_access"
+# then fully quit + relaunch Xcode for the new launchd env to take effect
+```
+
+**2. Shell-launched Xcode (`xed .` / `open AcmeBank.xcodeproj` from a
+terminal):** export in your `~/.zshrc` (or `~/.bash_profile`) so every
+new shell — and any Xcode launched from it — inherits them:
+
+```bash
+# ~/.zshrc
+export OKTA_ISSUER="https://acme.okta.com/oauth2/default"
+export OKTA_CLIENT_ID="0oaXXXXXXXXXXXXXXXXX"
+export OKTA_REDIRECT_URI="com.acmebank.mobile:/callback"
+export OKTA_SCOPES="openid profile offline_access"
+```
+
+```bash
+source ~/.zshrc
+xed .   # Xcode inherits the shell's env vars
+```
+
+**3. Per-command `xcodebuild` (CI, scripted local builds):** prefix the
+invocation so the vars only live for that one process:
+
+```bash
+OKTA_ISSUER="$OKTA_ISSUER" \
+OKTA_CLIENT_ID="$OKTA_CLIENT_ID" \
+OKTA_REDIRECT_URI="$OKTA_REDIRECT_URI" \
+OKTA_SCOPES="$OKTA_SCOPES" \
+xcodebuild build \
+  -scheme AcmeBank \
+  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+> **Why this matters:** `PhaseScriptExecution` subshells do NOT inherit
+> job-level env vars from arbitrary processes. They inherit only what
+> Xcode itself was launched with. A common pitfall is exporting vars in
+> Terminal *after* Xcode is already running and expecting them to reach
+> the build script — they will not. Either restart Xcode after exporting
+> (recipes 1 + 2), or pass the vars per-invocation on the command line
+> (recipe 3).
+
 ## Project Structure
 
 | Path | Description |
 |------|-------------|
 | `project.yml` | XcodeGen spec — source of truth for the Xcode project |
+| `Scripts/inject_okta_config.sh` | Build-phase script that bridges `OKTA_*` env vars → `Info.plist` |
 | `AcmeBank/` | App source (SwiftUI, MVVM + Coordinator) |
+| `AcmeBank/Sources/Auth/OktaConfig.swift` | Runtime view of injected Okta tenant config |
+| `AcmeBank/Info.plist` | Committed Info.plist with `__*_UNSET__` defaults for the four Okta keys |
 | `AcmeBankTests/` | XCTest unit tests |
 | `AcmeBankUITests/` | XCUITest end-to-end flow tests |
 | `CLAUDE.md` / `AGENT.md` | Full architecture context for AI agents |

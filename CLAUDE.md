@@ -39,9 +39,15 @@ xcodebuild test \
 ```
 project.yml                     # XcodeGen spec — source of truth for the Xcode project
 setup.sh                        # one-shot post-clone materialisation script
+Scripts/
+  inject_okta_config.sh         # Run Script build phase: OKTA_* env vars → Info.plist (implemented)
 AcmeBank/
   App/                          # @main entry point (implemented)
   ContentView.swift             # Hello World placeholder (implemented)
+  Info.plist                    # Committed plist with __*_UNSET__ defaults for Okta keys (implemented)
+  Sources/
+    Auth/
+      OktaConfig.swift          # Runtime view of injected Okta tenant config (implemented)
   Core/
     Auth/                       # AuthService, KeychainStore, UserSession (deferred)
     Networking/                 # APIClient, APIRouter, APIError, RequestInterceptor (deferred)
@@ -84,6 +90,27 @@ AppCoordinator  ← observed by RootView
         └── MoreCoordinator
 ```
 
+### Auth layer — Okta plumbing (implemented in PR 1)
+- `AcmeBank/Sources/Auth/OktaConfig.swift` is the single runtime entry point for
+  Okta tenant values. It reads `Bundle.main.infoDictionary` and returns
+  `.configured(issuer:clientID:redirectURI:scopes:)` or
+  `.notConfigured(reason:)` — never crashes, never force-unwraps.
+- The four values reach the `Info.plist` via `Scripts/inject_okta_config.sh`, a
+  Run Script build phase wired in `project.yml` BEFORE `Compile Sources`. The
+  script `plutil -replace`s each key with the matching env var, falling back to
+  a `__<NAME>_UNSET__` sentinel when the env var is empty so `xcodebuild` still
+  succeeds on a fresh clone with no secrets.
+- **Env-var contract** (set in the shell that launches Xcode — see README):
+  `OKTA_ISSUER`, `OKTA_CLIENT_ID`, `OKTA_REDIRECT_URI`, `OKTA_SCOPES`.
+- Reminder for future agents: `PhaseScriptExecution` subshells inherit only the
+  env of the process that launched Xcode. Don't add an xcconfig `$(VAR)`
+  reference — it would chain build settings, not shell env, and silently ship
+  empty values. Keep the Run Script as the single injection point.
+- UI-test runners are a separate process and their `Bundle.main` is the test
+  runner bundle, not the app bundle. A test that wants to gate on "is Okta
+  wired up?" must probe `ProcessInfo.processInfo.environment` directly, not
+  call `OktaConfig.load()` from the UI-test target.
+
 ### Authentication — Okta OIDC (deferred — future PR)
 - `AuthService` implements `signIn()`, `signOut()`, `refreshTokenIfNeeded()`.
 - Tokens persisted to Keychain via `KeychainStore`.
@@ -117,7 +144,7 @@ for CI (`CODE_SIGNING_ALLOWED=NO` simulator) — without this flag `SecItem*` re
 `errSecMissingEntitlement` (-34018) even though the entitlements file is present.
 
 ## Deferred Work
-- Okta OIDC authentication (`AuthService`, `KeychainStore`, `UserSession`, `Okta.plist`) — future PR
+- Okta OIDC authentication (`AuthService`, `KeychainStore`, `UserSession`) — future PR (PR 1 ships the config plumbing only)
 - Login screen (`LoginView`, `LoginViewModel`, `LoginCoordinator`) — future PR
 - Home Dashboard + BFF integration (`HomeView`, `HomeViewModel`, `HomeCoordinator`) — future PR
 - MVVM + Coordinator wiring (`AppCoordinator`, `RootView`, `TabBarCoordinator`) — future PR
