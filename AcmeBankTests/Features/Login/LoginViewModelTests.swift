@@ -61,6 +61,16 @@ final class LoginViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isSignInEnabled, "Password with spaces → enabled")
     }
 
+    // MARK: - keepSignedIn default
+
+    func test_keepSignedIn_defaultsToFalse() {
+        // Default MUST be false: opting into long-lived refresh-token
+        // persistence by accident is a security regression.
+        let vm = LoginViewModel()
+        XCTAssertFalse(vm.keepSignedIn,
+                       "keepSignedIn must default to false so a fresh launch never persists a refresh token without explicit user consent.")
+    }
+
     // MARK: - errorMessage publishing
 
     func test_errorMessage_isNilByDefault() {
@@ -114,28 +124,32 @@ final class LoginViewModelTests: XCTestCase {
         let vm = LoginViewModel()
         vm.username = "alice@acmebank.com"
         vm.password = "p@ssw0rd"
+        vm.keepSignedIn = true
 
         var capturedUsername: String?
         var capturedPassword: String?
+        var capturedKeepSignedIn: Bool?
         let expectation = XCTestExpectation(description: "onSignIn called")
 
-        vm.onSignIn = { user, pass in
+        vm.onSignIn = { user, pass, keep in
             capturedUsername = user
             capturedPassword = pass
+            capturedKeepSignedIn = keep
             expectation.fulfill()
         }
 
-        vm.onSignIn(vm.username, vm.password)
+        vm.onSignIn(vm.username, vm.password, vm.keepSignedIn)
 
         wait(for: [expectation], timeout: 1.0)
         XCTAssertEqual(capturedUsername, "alice@acmebank.com")
         XCTAssertEqual(capturedPassword, "p@ssw0rd")
+        XCTAssertEqual(capturedKeepSignedIn, true)
     }
 
     func test_onSignIn_defaultClosureDoesNotCrash() {
         // Default no-op closure must not throw or crash
         let vm = LoginViewModel()
-        vm.onSignIn("user", "pass") // should be a silent no-op
+        vm.onSignIn("user", "pass", false) // should be a silent no-op
     }
 
     // MARK: - signIn() method
@@ -147,11 +161,13 @@ final class LoginViewModelTests: XCTestCase {
 
         var capturedUsername: String?
         var capturedPassword: String?
+        var capturedKeepSignedIn: Bool?
         let expectation = XCTestExpectation(description: "signIn forwards credentials")
 
-        vm.onSignIn = { user, pass in
+        vm.onSignIn = { user, pass, keep in
             capturedUsername = user
             capturedPassword = pass
+            capturedKeepSignedIn = keep
             expectation.fulfill()
         }
 
@@ -160,6 +176,31 @@ final class LoginViewModelTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
         XCTAssertEqual(capturedUsername, "bob@acmebank.com")
         XCTAssertEqual(capturedPassword, "hunter2")
+        XCTAssertEqual(capturedKeepSignedIn, false,
+                       "signIn must forward the current keepSignedIn value; default is false.")
+    }
+
+    func test_signIn_forwardsKeepSignedInTrue() {
+        // The AC requires keepSignedIn to reach AuthCoordinator. Confirm
+        // the true value is propagated through signIn() so the refresh-
+        // token persistence branch in AuthCoordinator is reachable.
+        let vm = LoginViewModel()
+        vm.username = "bob@acmebank.com"
+        vm.password = "hunter2"
+        vm.keepSignedIn = true
+
+        var capturedKeepSignedIn: Bool?
+        let expectation = XCTestExpectation(description: "keepSignedIn forwarded")
+        vm.onSignIn = { _, _, keep in
+            capturedKeepSignedIn = keep
+            expectation.fulfill()
+        }
+
+        vm.signIn()
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(capturedKeepSignedIn, true,
+                       "When user opts in, keepSignedIn must propagate to onSignIn.")
     }
 
     func test_signIn_clearsPasswordAfterCall() {
@@ -168,7 +209,7 @@ final class LoginViewModelTests: XCTestCase {
         vm.password = "hunter2"
 
         let expectation = XCTestExpectation(description: "password cleared after signIn")
-        vm.onSignIn = { _, _ in }
+        vm.onSignIn = { _, _, _ in }
 
         vm.$password
             .dropFirst() // skip initial "hunter2"
@@ -188,7 +229,7 @@ final class LoginViewModelTests: XCTestCase {
         let vm = LoginViewModel()
         vm.username = "bob@acmebank.com"
         vm.password = "hunter2"
-        vm.onSignIn = { _, _ in }
+        vm.onSignIn = { _, _, _ in }
 
         vm.signIn()
 
