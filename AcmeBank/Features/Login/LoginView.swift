@@ -6,21 +6,18 @@ struct LoginView: View {
 
     private let navyColor = Color(red: 0x1B / 255.0, green: 0x2A / 255.0, blue: 0x4A / 255.0)
 
-    /// Closure injected by the caller; invoked on Sign In tap with (username, password).
-    /// Stored and forwarded to the ViewModel so that tests can also spy via `viewModel.onSignIn`.
-    private let onSignIn: (String, String) -> Void
-
     init(onSignIn: @escaping (String, String) -> Void) {
-        self.onSignIn = onSignIn
-        _viewModel = StateObject(wrappedValue: LoginViewModel())
+        let vm = LoginViewModel()
+        vm.onSignIn = onSignIn          // wire once, here — avoids .onAppear timing dependency
+        _viewModel = StateObject(wrappedValue: vm)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Top strip ────────────────────────────────────────────────
+            // ── Top strip ────────────────────────────────────────────────────
             topStrip
 
-            // ── Scrollable body ──────────────────────────────────────────
+            // ── Scrollable body ──────────────────────────────────────────────
             ScrollView {
                 VStack(spacing: 24) {
                     HexagonLogoView()
@@ -49,15 +46,10 @@ struct LoginView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // ── Footer ───────────────────────────────────────────────────
+            // ── Footer ───────────────────────────────────────────────────────
             footer
         }
         .background(Color(.systemBackground))
-        .onAppear {
-            // Wire the injected closure into the ViewModel so callers
-            // and unit-test spies both work via viewModel.onSignIn.
-            viewModel.onSignIn = onSignIn
-        }
     }
 
     // MARK: - Sub-views
@@ -150,18 +142,17 @@ struct LoginView: View {
 
     private var signInButton: some View {
         Button {
-            viewModel.onSignIn(viewModel.username, viewModel.password)
+            viewModel.signIn()
         } label: {
             Text("Sign in")
                 .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .background(navyColor)
-                .cornerRadius(8)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .disabled(!viewModel.isSignInEnabled)
         .opacity(viewModel.isSignInEnabled ? 1.0 : 0.5)
+        .background(navyColor)
+        .clipShape(.rect(cornerRadius: 8))          // iOS 17+ safe; hoisted above Button boundary
         .accessibilityIdentifier("signInButton")
     }
 

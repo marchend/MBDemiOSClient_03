@@ -46,6 +46,21 @@ final class LoginViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isSignInEnabled, "Clearing username → disabled again")
     }
 
+    func test_isSignInEnabled_falseWhenUsernameIsWhitespaceOnly() {
+        let vm = LoginViewModel()
+        vm.username = "   "
+        vm.password = "secret"
+        XCTAssertFalse(vm.isSignInEnabled, "Whitespace-only username → disabled")
+    }
+
+    func test_isSignInEnabled_trueWhenPasswordContainsSpaces() {
+        // Spaces in passwords are intentional and must not be trimmed.
+        let vm = LoginViewModel()
+        vm.username = "user@acmebank.com"
+        vm.password = "my secret pass"
+        XCTAssertTrue(vm.isSignInEnabled, "Password with spaces → enabled")
+    }
+
     // MARK: - errorMessage publishing
 
     func test_errorMessage_isNilByDefault() {
@@ -121,5 +136,62 @@ final class LoginViewModelTests: XCTestCase {
         // Default no-op closure must not throw or crash
         let vm = LoginViewModel()
         vm.onSignIn("user", "pass") // should be a silent no-op
+    }
+
+    // MARK: - signIn() method
+
+    func test_signIn_callsOnSignInWithCredentials() {
+        let vm = LoginViewModel()
+        vm.username = "bob@acmebank.com"
+        vm.password = "hunter2"
+
+        var capturedUsername: String?
+        var capturedPassword: String?
+        let expectation = XCTestExpectation(description: "signIn forwards credentials")
+
+        vm.onSignIn = { user, pass in
+            capturedUsername = user
+            capturedPassword = pass
+            expectation.fulfill()
+        }
+
+        vm.signIn()
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(capturedUsername, "bob@acmebank.com")
+        XCTAssertEqual(capturedPassword, "hunter2")
+    }
+
+    func test_signIn_clearsPasswordAfterCall() {
+        let vm = LoginViewModel()
+        vm.username = "bob@acmebank.com"
+        vm.password = "hunter2"
+
+        let expectation = XCTestExpectation(description: "password cleared after signIn")
+        vm.onSignIn = { _, _ in }
+
+        vm.$password
+            .dropFirst() // skip initial "hunter2"
+            .sink { value in
+                if value == "" { expectation.fulfill() }
+            }
+            .store(in: &cancellables)
+
+        vm.signIn()
+
+        wait(for: [expectation], timeout: 1.0)
+        XCTAssertEqual(vm.password, "", "password must be cleared after signIn()")
+    }
+
+    func test_signIn_usernameIsNotCleared() {
+        // Username should remain so the user can re-attempt without re-typing.
+        let vm = LoginViewModel()
+        vm.username = "bob@acmebank.com"
+        vm.password = "hunter2"
+        vm.onSignIn = { _, _ in }
+
+        vm.signIn()
+
+        XCTAssertEqual(vm.username, "bob@acmebank.com", "username must not be cleared after signIn()")
     }
 }
