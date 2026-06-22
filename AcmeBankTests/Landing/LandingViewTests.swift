@@ -51,7 +51,7 @@ final class LandingViewTests: XCTestCase {
         XCTAssertNotEqual(
             LandingView.greeting(for: sessionA),
             LandingView.greeting(for: sessionB),
-            "Greeting must vary with the injected session \u2014 a constant value would mean the displayName isn't really being read."
+            "Greeting must vary with the injected session — a constant value would mean the displayName isn't really being read."
         )
     }
 

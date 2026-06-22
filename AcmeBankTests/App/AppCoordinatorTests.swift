@@ -189,7 +189,7 @@ final class AppCoordinatorTests: XCTestCase {
         coordinator.signOut()
 
         XCTAssertNil(coordinator.session,
-                     "signOut must clear `session` even if the keychain clear fails \u2014 otherwise the user is trapped.")
+                     "signOut must clear `session` even if the keychain clear fails — otherwise the user is trapped.")
         XCTAssertEqual(keychain.clearCallCount, 1)
     }
 }
