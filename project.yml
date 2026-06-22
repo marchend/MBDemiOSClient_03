@@ -3,19 +3,40 @@ options:
   bundleIdPrefix: com.acmebank
   deploymentTarget:
     iOS: "17.0"
+packages:
+  okta-mobile-swift:
+    url: https://github.com/okta/okta-mobile-swift
+    # Pin to the current minor so a future 2.x SPM resolve cannot
+    # silently swap in a different `OktaDirectAuth` API. The
+    # `okta-mobile-swift` 2.x line has shipped breaking changes between
+    # minors; bump this deliberately when upgrading.
+    minorVersion: 2.0.0
 targets:
   AcmeBank:
     type: application
     platform: iOS
-    sources: [AcmeBank]
-    resources: [AcmeBank/Resources]
+    sources:
+      - path: AcmeBank
+    resources:
+      - AcmeBank/Resources
+    dependencies:
+      - package: okta-mobile-swift
+        product: OktaDirectAuth
+    # MUST run AFTER "Process Info.plist" so the built plist exists in
+    # $BUILT_PRODUCTS_DIR for the script to mutate. `postBuildScripts`
+    # lands after all standard build phases but before code signing,
+    # which is exactly the slot we need.
+    postBuildScripts:
+      - name: Inject Okta Config
+        script: 'bash "$SRCROOT/Scripts/inject_okta_config.sh"'
+        inputFiles:
+          - $(SRCROOT)/Scripts/inject_okta_config.sh
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.acmebank.mobile
         SWIFT_VERSION: "5.10"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_FILE: AcmeBank/Info.plist
         CODE_SIGNING_ALLOWED: "NO"
         CODE_SIGNING_REQUIRED: "NO"
         ENABLE_USER_SCRIPT_SANDBOXING: "NO"
@@ -37,5 +58,7 @@ schemes:
     build:
       targets: { AcmeBank: all }
     test:
-      targets: [AcmeBankTests, AcmeBankUITests]
       parallelizable: false
+      targets:
+        - name: AcmeBankTests
+        - name: AcmeBankUITests
