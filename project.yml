@@ -6,7 +6,11 @@ options:
 packages:
   okta-mobile-swift:
     url: https://github.com/okta/okta-mobile-swift
-    from: 2.0.0
+    # Pin to the current minor so a future 2.x SPM resolve cannot
+    # silently swap in a different `OktaDirectAuth` API. The
+    # `okta-mobile-swift` 2.x line has shipped breaking changes between
+    # minors; bump this deliberately when upgrading.
+    minorVersion: 2.0.0
 targets:
   AcmeBank:
     type: application
@@ -18,7 +22,11 @@ targets:
     dependencies:
       - package: okta-mobile-swift
         product: OktaDirectAuth
-    preBuildScripts:
+    # MUST run AFTER "Process Info.plist" so the built plist exists in
+    # $BUILT_PRODUCTS_DIR for the script to mutate. `postBuildScripts`
+    # lands after all standard build phases but before code signing,
+    # which is exactly the slot we need.
+    postBuildScripts:
       - name: Inject Okta Config
         script: 'bash "$SRCROOT/Scripts/inject_okta_config.sh"'
         inputFiles:

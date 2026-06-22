@@ -29,10 +29,17 @@ xcodebuild test \
 
 ## Okta build configuration
 
-The Okta tenant values are NEVER committed. They are read from four shell
-environment variables at build time and written into `AcmeBank/Info.plist`
-by the `Scripts/inject_okta_config.sh` Run Script build phase. The app
-reads them at runtime via `OktaConfig.load()`.
+The Okta tenant values are NEVER committed and NEVER written to the
+source `AcmeBank/Info.plist`. They are read from four shell environment
+variables at build time and written into the **built-product copy** of
+`Info.plist` (inside `$BUILT_PRODUCTS_DIR`, which lives under
+`DerivedData` and is git-ignored) by the `Scripts/inject_okta_config.sh`
+Run Script build phase. The source `AcmeBank/Info.plist` is checked in
+with `__<NAME>_UNSET__` sentinel values for the four Okta keys and is
+never mutated by the build; this means a developer can never
+accidentally commit live tenant credentials via `git add -A` or Xcode's
+"Commit All". The app reads the injected values at runtime via
+`OktaConfig.load()`.
 
 | Env var              | Info.plist key      | Example                                       |
 |----------------------|---------------------|-----------------------------------------------|
@@ -42,9 +49,14 @@ reads them at runtime via `OktaConfig.load()`.
 | `OKTA_SCOPES`        | `OktaScopes`        | `openid profile offline_access`               |
 
 If any of these is unset, the build still succeeds — the script writes a
-`__<NAME>_UNSET__` sentinel and `OktaConfig.load()` returns
-`.notConfigured(reason:)` at runtime so the auth layer can gate sign-in
-without crashing.
+`__<NAME>_UNSET__` sentinel into the built plist and `OktaConfig.load()`
+returns `.notConfigured(reason:)` at runtime so the auth layer can gate
+sign-in without crashing.
+
+The Run Script phase is registered as a **post-build script** in
+`project.yml` so it runs AFTER Xcode's standard "Process Info.plist"
+step has produced the built copy in `$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH`
+and BEFORE code signing.
 
 ### Three ways to make Xcode see the env vars
 
@@ -110,10 +122,10 @@ xcodebuild build \
 | Path | Description |
 |------|-------------|
 | `project.yml` | XcodeGen spec — source of truth for the Xcode project |
-| `Scripts/inject_okta_config.sh` | Build-phase script that bridges `OKTA_*` env vars → `Info.plist` |
+| `Scripts/inject_okta_config.sh` | Build-phase script that bridges `OKTA_*` env vars → the built Info.plist in `$BUILT_PRODUCTS_DIR` |
 | `AcmeBank/` | App source (SwiftUI, MVVM + Coordinator) |
 | `AcmeBank/Sources/Auth/OktaConfig.swift` | Runtime view of injected Okta tenant config |
-| `AcmeBank/Info.plist` | Committed Info.plist with `__*_UNSET__` defaults for the four Okta keys |
+| `AcmeBank/Info.plist` | Committed Info.plist with `__*_UNSET__` defaults for the four Okta keys — NEVER mutated by the build |
 | `AcmeBankTests/` | XCTest unit tests |
 | `AcmeBankUITests/` | XCUITest end-to-end flow tests |
 | `CLAUDE.md` / `AGENT.md` | Full architecture context for AI agents |

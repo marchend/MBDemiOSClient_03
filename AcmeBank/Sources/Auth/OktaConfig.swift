@@ -73,11 +73,27 @@ enum OktaConfig: Equatable {
             return .notConfigured(reason: "Invalid OKTA_REDIRECT_URI URL in Info.plist — see README.")
         }
 
+        // Mirror the URL guards for the string-typed keys. The validation
+        // loop above already guarantees these are present and non-empty,
+        // so this branch is defensive: an explicit `guard` makes the
+        // invariant unambiguous and prevents a future refactor of the
+        // loop from silently producing a `.configured` value with empty
+        // strings that would later fail at the Okta SDK call site with
+        // an opaque error.
+        guard
+            let clientID = values[.clientID], !clientID.isEmpty,
+            let scopes = values[.scopes], !scopes.isEmpty
+        else {
+            return .notConfigured(
+                reason: "clientID or scopes empty after validation pass — this is a bug in OktaConfig.load()."
+            )
+        }
+
         return .configured(
             issuer: issuerURL,
-            clientID: values[.clientID] ?? "",
+            clientID: clientID,
             redirectURI: redirectURL,
-            scopes: values[.scopes] ?? ""
+            scopes: scopes
         )
     }
 
