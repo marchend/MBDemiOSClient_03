@@ -44,7 +44,7 @@ final class KeychainStoreTests: XCTestCase {
                 continue
             }
             XCTAssertTrue(flag,
-                          "kSecUseDataProtectionKeychain must be true on every keychain query \u2014 required for CI's CODE_SIGNING_ALLOWED=NO simulator")
+                          "kSecUseDataProtectionKeychain must be true on every keychain query — required for CI's CODE_SIGNING_ALLOWED=NO simulator")
         }
     }
 

@@ -64,7 +64,7 @@ final class AuthCoordinatorTests: XCTestCase {
         }
         XCTAssertEqual(reason, "Missing OKTA_ISSUER")
         XCTAssertEqual(service.callCount, 0,
-                       "Service must NOT be called when config is missing \u2014 secrets aren't loaded")
+                       "Service must NOT be called when config is missing — secrets aren't loaded")
         XCTAssertNil(try? keychain.loadRefreshToken(),
                      "No tokens should be persisted on the notConfigured path")
     }
