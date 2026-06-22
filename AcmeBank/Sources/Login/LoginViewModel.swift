@@ -92,6 +92,16 @@ final class LoginViewModel: ObservableObject {
     /// (failure cases). On return — success OR failure —
     /// `isSigningIn` is reset to `false` so the spinner clears.
     ///
+    /// **Password is zeroed regardless of outcome.** The auth layer
+    /// owns the token from here on; leaving the cleartext credential
+    /// in `self.password` would keep it alive on the `@StateObject`-
+    /// owned ViewModel for the lifetime of `LoginView`. On the failure
+    /// paths that lifetime is indefinite (the view stays mounted until
+    /// the user retries or navigates away), which is the regression
+    /// the PR-7 security review flagged. A `defer` runs on every exit
+    /// path including future early returns added by a refactor, so it
+    /// is the most refactor-proof place to do the clear.
+    ///
     /// - Returns: The decoded `UserSession` on `.success`, otherwise
     ///   `nil`. The View hands a non-nil return value to
     ///   `AppCoordinator.handleSignIn(_:)` which flips the root view
@@ -99,6 +109,10 @@ final class LoginViewModel: ObservableObject {
     @MainActor
     @discardableResult
     func signIn(username: String, password: String, keepSignedIn: Bool) async -> UserSession? {
+        // Zero the cleartext password on every exit path (success or
+        // failure). See doc comment above for the rationale.
+        defer { self.password = "" }
+
         isSigningIn = true
         // Clear any prior banner before the request goes out — leaving
         // a stale "Couldn't reach Okta" message visible while a new

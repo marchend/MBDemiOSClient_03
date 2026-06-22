@@ -30,6 +30,14 @@ struct LoginView: View {
     @StateObject private var viewModel: LoginViewModel
     @State private var isPasswordVisible: Bool = false
 
+    /// Handle to the in-flight sign-in `Task`, if any. Stored so the
+    /// view can cancel it on `.onDisappear` — without this handle the
+    /// unstructured `Task { ... }` would keep running after the view
+    /// has left the tree and `appCoordinator.handleSignIn(session)`
+    /// could still fire from a `LoginView` instance that is no longer
+    /// mounted. See `signInButton` for the cancellation contract.
+    @State private var signInTask: Task<Void, Never>? = nil
+
     private let navyColor = Color(red: 0x1B / 255.0, green: 0x2A / 255.0, blue: 0x4A / 255.0)
 
     /// Designated initializer.
@@ -52,10 +60,10 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Top strip ───────────────────────────────────────────
+            // ── Top strip ─────────────────────────────────────────────
             topStrip
 
-            // ── Scrollable body ─────────────────────────────────────
+            // ── Scrollable body ───────────────────────────────────────
             ScrollView {
                 VStack(spacing: 24) {
                     HexagonLogoView()
@@ -89,10 +97,21 @@ struct LoginView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // ── Footer ──────────────────────────────────────────────
+            // ── Footer ────────────────────────────────────────────────
             footer
         }
         .background(Color(.systemBackground))
+        .onDisappear {
+            // If a sign-in is still in flight when the view leaves the
+            // tree, cancel the task so its post-await `handleSignIn`
+            // call does not land on a coordinator from a stale view.
+            // Note: Okta's `DirectAuth.start` itself is not
+            // cancellable, so the underlying network round-trip may
+            // still run to completion — cancellation only skips our
+            // own navigation hand-off, which is the part that matters.
+            signInTask?.cancel()
+            signInTask = nil
+        }
     }
 
     // MARK: - Sub-views
@@ -206,6 +225,17 @@ struct LoginView: View {
 
     private var signInButton: some View {
         Button {
+            // Synchronous double-tap guard. The button's `.disabled`
+            // binding reflects `viewModel.isSigningIn`, but that flag
+            // is flipped to `true` INSIDE the async `signIn(...)`
+            // body — so there is a one-event-loop-turn window between
+            // tap and disabled-state taking effect during which a
+            // second tap could spawn a second concurrent auth call.
+            // Guarding here closes that window without waiting for
+            // SwiftUI to re-render. Also a no-op if a Task handle is
+            // still around from a previous tap.
+            guard !viewModel.isSigningIn, signInTask == nil else { return }
+
             // Snapshot the credentials BEFORE the async hop. The View
             // does not modify them, but reading them off the @Published
             // properties at the call site keeps the closure explicit
@@ -213,17 +243,38 @@ struct LoginView: View {
             let u = viewModel.username
             let p = viewModel.password
             let k = viewModel.keepSignedIn
-            Task {
-                if let session = await viewModel.signIn(
+
+            // Store the Task handle on @State so `.onDisappear` can
+            // cancel it if the view leaves the tree mid-flight (see
+            // the body-level `.onDisappear`). Cancellation only skips
+            // our post-await navigation hand-off — Okta's underlying
+            // `DirectAuth.start` is not cancellable, so the network
+            // round-trip may still run to completion. That's an
+            // accepted trade-off: the navigation flip is the part
+            // that's unsafe to fire from a stale view.
+            signInTask = Task {
+                let session = await viewModel.signIn(
                     username: u,
                     password: p,
                     keepSignedIn: k
-                ) {
+                )
+                // If the view was popped (or another sign-in was
+                // launched) while we were awaiting, drop the result.
+                // Single navigation mechanism: only a live LoginView
+                // hands its session to AppCoordinator.
+                if Task.isCancelled {
+                    return
+                }
+                if let session = session {
                     // Single navigation mechanism: hand the session to
                     // AppCoordinator. Its @Published flip causes the
                     // root view to swap from LoginView to LandingView.
                     appCoordinator.handleSignIn(session)
                 }
+                // Release the handle so a follow-up retry (on the
+                // failure path, where the view stays mounted) can
+                // proceed past the guard above.
+                signInTask = nil
             }
         } label: {
             ZStack {

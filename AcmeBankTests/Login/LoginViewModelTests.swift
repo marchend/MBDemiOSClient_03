@@ -237,4 +237,55 @@ final class LoginViewModelTests: XCTestCase {
         XCTAssertNil(vm.errorMessage,
                      "A successful retry must not leave a stale error banner visible.")
     }
+
+    // MARK: - Password zeroing (security regression coverage)
+    //
+    // The pre-async-refactor LoginViewModel explicitly cleared
+    // `self.password = ""` on every signIn() exit path. That test
+    // (`test_signIn_clearsPasswordAfterCall`) was lost in the deletion
+    // of `AcmeBank/Features/Login/LoginViewModelTests.swift`. PR-7
+    // review flagged this: without coverage the regression — cleartext
+    // password living on the @StateObject-owned ViewModel for the
+    // lifetime of LoginView — is invisible to the test suite.
+    //
+    // We assert the zeroing on BOTH the success and failure paths,
+    // because the failure path is where the window is widest: the view
+    // stays mounted and the credential would otherwise linger until
+    // the user types into the field again.
+
+    func test_signIn_clearsPasswordAfterCall_onSuccess() async {
+        let auth = MockAuthCoordinator()
+        auth.stubbedResult = .success(makeSession(), refreshToken: nil)
+        let vm = LoginViewModel(auth: auth)
+        vm.password = "hunter2"
+
+        _ = await vm.signIn(username: "u", password: "hunter2", keepSignedIn: false)
+
+        XCTAssertEqual(vm.password, "",
+                       "password must be zeroed after signIn on the success path — auth layer owns the token from here on.")
+    }
+
+    func test_signIn_clearsPasswordAfterCall_onInvalidCredentials() async {
+        let auth = MockAuthCoordinator()
+        auth.stubbedResult = .invalidCredentials
+        let vm = LoginViewModel(auth: auth)
+        vm.password = "hunter2"
+
+        _ = await vm.signIn(username: "u", password: "hunter2", keepSignedIn: false)
+
+        XCTAssertEqual(vm.password, "",
+                       "password must be zeroed even on the failure path; LoginView stays mounted indefinitely until retry.")
+    }
+
+    func test_signIn_clearsPasswordAfterCall_onNetworkError() async {
+        let auth = MockAuthCoordinator()
+        auth.stubbedResult = .networkError
+        let vm = LoginViewModel(auth: auth)
+        vm.password = "hunter2"
+
+        _ = await vm.signIn(username: "u", password: "hunter2", keepSignedIn: false)
+
+        XCTAssertEqual(vm.password, "",
+                       "password must be zeroed on the network-error path as well.")
+    }
 }
