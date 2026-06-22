@@ -171,16 +171,18 @@ final class LiveDirectAuthDriver: DirectAuthFlowDriver {
 
     init(issuer: URL, clientID: String, redirectURI: URL, scopes: String) {
         // `DirectAuthenticationFlow` in okta-mobile-swift 2.x takes
-        // issuer URL, clientId, and a space-separated scopes string.
-        // `redirectURI` is part of the broader OAuth2 config but is
-        // unused by DirectAuth itself \u2014 it's kept on this initializer
-        // so the call site mirrors the four `OktaConfig.configured`
-        // values without having to drop one on the floor.
+        // `issuerURL:`, `clientId:`, and a singular `scope:` parameter
+        // (a `WhitespaceSeparated`-conforming type \u2014 `String` satisfies
+        // it as a space-separated scope list). `redirectURI` is part
+        // of the broader OAuth2 config but is unused by DirectAuth
+        // itself \u2014 it's kept on this initializer so the call site
+        // mirrors the four `OktaConfig.configured` values without
+        // having to drop one on the floor.
         _ = redirectURI
         self.flow = DirectAuthenticationFlow(
-            issuer: issuer,
+            issuerURL: issuer,
             clientId: clientID,
-            scopes: scopes
+            scope: scopes
         )
     }
 
