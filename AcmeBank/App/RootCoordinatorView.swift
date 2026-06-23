@@ -27,6 +27,16 @@ import SwiftUI
 /// user sees the inline "couldn't reach Acme Bank \u2014 try again"
 /// state instead of a silent loading spinner. A misconfigured plist
 /// is a CI bug, not a runtime user experience.
+///
+/// **View model memoisation.** `body` re-evaluates on every
+/// `coordinator` `@Published` change, not just on a session
+/// transition. To avoid allocating a fresh `BFFHomeRepository` +
+/// `HomeViewModel` on every publish (only to have SwiftUI discard it
+/// because `.id(session.accessToken)` matched the existing
+/// `@StateObject`), we cache the most recently-built view model
+/// keyed on the access token. A token change (different sign-in)
+/// invalidates the cache and a new VM is built exactly once for that
+/// session.
 struct RootCoordinatorView: View {
 
     @EnvironmentObject private var coordinator: AppCoordinator
@@ -38,10 +48,19 @@ struct RootCoordinatorView: View {
     /// service).
     let auth: AuthCoordinating
 
+    /// Memoised view model + the access token it was built for.
+    /// `homeViewModel(for:)` returns the cached value when the token
+    /// matches and builds a fresh one (replacing the cache) when it
+    /// does not - which is the same boundary `.id(session.accessToken)`
+    /// uses to decide whether to recycle the `HomeView`. Storing the
+    /// cache in `@State` keeps it stable across `body`
+    /// re-evaluations without escaping the view's lifetime.
+    @State private var cachedViewModel: (token: String, viewModel: HomeViewModel)?
+
     var body: some View {
         if let session = coordinator.session {
             HomeView(
-                viewModel: makeHomeViewModel(for: session),
+                viewModel: homeViewModel(for: session),
                 coordinator: coordinator
             )
             // Re-key on the bearer so a fresh sign-in (different
@@ -51,6 +70,25 @@ struct RootCoordinatorView: View {
         } else {
             LoginView(auth: auth)
         }
+    }
+
+    /// Return the memoised `HomeViewModel` for `session`, or build a
+    /// new one and update the cache when the access token has
+    /// changed. See type-level doc for the rationale.
+    ///
+    /// Mutating `@State` from inside `body` is normally a SwiftUI
+    /// red flag, but here the write is idempotent: the same token
+    /// always resolves to the cached VM, and a token transition
+    /// matches the `.id(session.accessToken)` boundary that already
+    /// forces a `HomeView` rebuild on the same publish. The state
+    /// mutation therefore never produces an extra render pass.
+    private func homeViewModel(for session: UserSession) -> HomeViewModel {
+        if let cached = cachedViewModel, cached.token == session.accessToken {
+            return cached.viewModel
+        }
+        let viewModel = makeHomeViewModel(for: session)
+        cachedViewModel = (token: session.accessToken, viewModel: viewModel)
+        return viewModel
     }
 
     /// Construct the production `HomeViewModel`:
