@@ -2,9 +2,11 @@ import SwiftUI
 
 /// Navy card that shows the signed-in customer's identity:
 ///   - an initials avatar (`first + last`, uppercased),
-///   - the customer's full name,
+///   - the customer's full name with an optional segment badge
+///     (e.g. "PREMIER") trailing the name when `customer.segment`
+///     is non-nil,
 ///   - the phone number when present,
-///   - a `checkmark.shield` row with "Authenticated via Okta \u00b7 Customer <id>".
+///   - a `checkmark.shield` row with "Authenticated via Okta · Customer <id>".
 ///
 /// The card is a fixed visual on the Home screen confirming **who**
 /// the BFF response belongs to - it doubles as a visible audit trail
@@ -30,9 +32,17 @@ struct SignedInCard: View {
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(fullName)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(BankPalette.onNavy)
+                    HStack(spacing: 8) {
+                        Text(fullName)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(BankPalette.onNavy)
+
+                        Spacer()
+
+                        if let segment = customer.segment {
+                            SegmentBadgeView(segment: segment)
+                        }
+                    }
 
                     if let phone = customer.phoneNumber, !phone.isEmpty {
                         Text(phone)
@@ -77,5 +87,23 @@ struct SignedInCard: View {
         let f = customer.firstName.first.map { String($0) } ?? ""
         let l = customer.lastName.first.map { String($0) } ?? ""
         return (f + l).uppercased()
+    }
+}
+
+// MARK: - Previews
+
+#Preview("With PREMIER badge") {
+    ZStack {
+        BankPalette.background.ignoresSafeArea()
+        SignedInCard(customer: HomeDashboardFixtures.previewDashboardWithSegment.customer)
+            .padding(.vertical)
+    }
+}
+
+#Preview("Without segment badge") {
+    ZStack {
+        BankPalette.background.ignoresSafeArea()
+        SignedInCard(customer: HomeDashboardFixtures.previewDashboardNoSegment.customer)
+            .padding(.vertical)
     }
 }
