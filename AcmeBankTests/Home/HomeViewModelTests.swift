@@ -79,7 +79,8 @@ private func makeDashboard(customerId: String = "cust-1") -> HomeDashboard {
             firstName: "Jane",
             lastName: "Doe",
             email: "jane@example.com",
-            phoneNumber: nil
+            phoneNumber: nil,
+            segment: nil
         ),
         accounts: [],
         recentTransactions: []
