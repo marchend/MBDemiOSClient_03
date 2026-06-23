@@ -41,5 +41,7 @@
 	<string>__OKTA_REDIRECT_URI_UNSET__</string>
 	<key>OktaScopes</key>
 	<string>__OKTA_SCOPES_UNSET__</string>
+	<key>API_BASE_URL</key>
+	<string>__API_BASE_URL_UNSET__</string>
 </dict>
 </plist>

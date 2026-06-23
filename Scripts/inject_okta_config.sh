@@ -68,4 +68,13 @@ inject "OktaClientID"    "${OKTA_CLIENT_ID:-}"    "__OKTA_CLIENT_ID_UNSET__"
 inject "OktaRedirectURI" "${OKTA_REDIRECT_URI:-}" "__OKTA_REDIRECT_URI_UNSET__"
 inject "OktaScopes"      "${OKTA_SCOPES:-}"       "__OKTA_SCOPES_UNSET__"
 
+# API_BASE_URL — the BFF base URL the Home screen calls (GET {API_BASE_URL}/v1/home).
+# BFFHomeRepository reads this Info.plist key at runtime; WITHOUT it the app falls
+# back to UnreachableHomeRepository and Home shows "Couldn't reach Acme Bank" even
+# though sign-in succeeded. Same env-injection contract as the Okta keys: set
+# API_BASE_URL in the build environment to the deployed BFF host (e.g.
+# https://mbdemo-bff-develop.azurewebsites.net). Unset → sentinel → app shows the
+# unreachable state (never a silent failure).
+inject "API_BASE_URL"    "${API_BASE_URL:-}"      "__API_BASE_URL_UNSET__"
+
 exit 0
