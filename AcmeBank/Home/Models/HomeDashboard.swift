@@ -17,13 +17,18 @@ struct HomeDashboard: Codable, Equatable {
 
 /// The signed-in bank customer.
 ///
-/// `phoneNumber` is nullable in the BFF contract — payroll-only or
-/// privacy-restricted profiles may omit it — so it must stay optional
-/// here. `email` is always present.
+/// Both `email` and `phoneNumber` are nullable in the BFF contract —
+/// the orchestrator's customer projection omits them, and payroll-only
+/// or privacy-restricted profiles may too — so they MUST stay optional.
+/// A non-optional `email` makes the whole `/v1/home` decode throw
+/// `valueNotFound` on a `null`, blanking the Home screen with
+/// "couldn't read the response" even though every account + transaction
+/// decoded fine. Neither field is rendered on Home today; keep them
+/// optional regardless.
 struct Customer: Codable, Equatable {
     let id: String
     let firstName: String
     let lastName: String
-    let email: String
+    let email: String?
     let phoneNumber: String?
 }

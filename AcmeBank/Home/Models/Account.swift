@@ -37,6 +37,9 @@ enum AccountType: String, Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
-        self = AccountType(rawValue: raw) ?? .unknown
+        // The BFF lowercases the type on the wire ("chequing"); the raw
+        // values here are UPPERCASE, so normalise the case before matching.
+        // An unrecognised value still maps to `.unknown` (never throws).
+        self = AccountType(rawValue: raw.uppercased()) ?? .unknown
     }
 }
