@@ -39,7 +39,7 @@ struct SignedInCard: View {
 
                         Spacer()
 
-                        if let segment = customer.segment {
+                        if let segment = badgeSegment {
                             SegmentBadgeView(segment: segment)
                         }
                     }
@@ -87,6 +87,13 @@ struct SignedInCard: View {
         let f = customer.firstName.first.map { String($0) } ?? ""
         let l = customer.lastName.first.map { String($0) } ?? ""
         return (f + l).uppercased()
+    }
+
+    /// The segment label to display in `SegmentBadgeView`, or `nil`
+    /// when the customer has no CRM tier. Mirrors the `if let` guard
+    /// in the view body so it can be unit-tested without a simulator.
+    var badgeSegment: String? {
+        return customer.segment
     }
 }
 

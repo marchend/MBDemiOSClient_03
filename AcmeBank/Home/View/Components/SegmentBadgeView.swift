@@ -13,7 +13,7 @@ struct SegmentBadgeView: View {
     let segment: String
 
     var body: some View {
-        Text(segment)
+        Text(segment.uppercased())
             .font(.caption.weight(.semibold))
             .foregroundColor(.white)
             .padding(.horizontal, 8)

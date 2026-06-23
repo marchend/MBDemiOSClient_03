@@ -314,35 +314,26 @@ final class HomeViewModelTests: XCTestCase {
 
     // MARK: - Segment: SignedInCard view logic
 
-    /// When `customer.segment` is "PREMIER", the badge text that
-    /// `SignedInCard` would render equals "PREMIER".
+    /// `SignedInCard.badgeSegment` returns the customer's segment when present.
     ///
-    /// The view's conditional is `if let segment = customer.segment { SegmentBadgeView(segment: segment) }`.
-    /// We assert on the unwrapped segment value — the same value that
-    /// the view passes to `SegmentBadgeView(segment:)` — rather than
-    /// inspecting the live view hierarchy (which requires a simulator
-    /// process and PNG comparison).
+    /// Tests the computed property directly — same lightweight pattern as
+    /// `fullName`/`initials` — so a regression in the `if let` guard in the
+    /// view body is caught without a simulator or snapshot.
     func testSignedInCardShowsBadgeWhenSegmentPresent() {
-        let dashboard = HomeDashboardFixtures.previewDashboardWithSegment
-        let customer = dashboard.customer
+        let customer = HomeDashboardFixtures.previewDashboardWithSegment.customer
+        let card = SignedInCard(customer: customer)
 
-        // The view renders the badge when and only when segment is non-nil.
-        // Asserting the unwrapped value mirrors the exact label text the
-        // badge renders.
-        XCTAssertNotNil(customer.segment,
-                        "previewDashboardWithSegment customer must have a non-nil segment.")
-        XCTAssertEqual(customer.segment, "PREMIER",
-                       "Badge text must equal 'PREMIER' for the PREMIER fixture.")
+        XCTAssertEqual(card.badgeSegment, "PREMIER",
+                       "SignedInCard.badgeSegment must equal 'PREMIER' when customer.segment is 'PREMIER'.")
     }
 
-    /// When `customer.segment` is nil, `SignedInCard` renders no badge —
-    /// the `if let` guard short-circuits and `SegmentBadgeView` is never
-    /// instantiated.
+    /// `SignedInCard.badgeSegment` returns `nil` when the customer has no segment,
+    /// meaning `SegmentBadgeView` is never instantiated.
     func testSignedInCardHidesBadgeWhenSegmentNil() {
-        let dashboard = HomeDashboardFixtures.previewDashboardNoSegment
-        let customer = dashboard.customer
+        let customer = HomeDashboardFixtures.previewDashboardNoSegment.customer
+        let card = SignedInCard(customer: customer)
 
-        XCTAssertNil(customer.segment,
-                     "previewDashboardNoSegment customer must have segment == nil so SignedInCard renders no SegmentBadgeView.")
+        XCTAssertNil(card.badgeSegment,
+                     "SignedInCard.badgeSegment must be nil when customer.segment is nil so no SegmentBadgeView is rendered.")
     }
 }

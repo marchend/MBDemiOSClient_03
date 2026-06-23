@@ -36,5 +36,5 @@ struct Customer: Codable, Equatable {
     let lastName: String
     let email: String?
     let phoneNumber: String?
-    var segment: String? = nil
+    let segment: String?
 }
