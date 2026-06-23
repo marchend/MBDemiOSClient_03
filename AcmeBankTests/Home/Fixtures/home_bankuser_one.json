@@ -1,0 +1,20 @@
+{
+  "customer": {
+    "id": "cust-1002",
+    "first_name": "Bankuser",
+    "last_name": "One",
+    "email": "bankuser.one@sisystems.com",
+    "phone_number": "+1-604-555-0188"
+  },
+  "accounts": [
+    { "id": "acct-11", "name": "Everyday Chequing",   "masked_number": "3310", "balance": 1542.88,  "available_balance": 1542.88,  "type": "CHEQUING",   "currency_code": "USD" },
+    { "id": "acct-12", "name": "Rainy Day Savings",   "masked_number": "7765", "balance": 6120.00,  "available_balance": 6120.00,  "type": "SAVINGS",    "currency_code": "USD" },
+    { "id": "acct-13", "name": "Cashback Mastercard", "masked_number": "4490", "balance": -243.10,  "available_balance": 4756.90,  "type": "CREDIT",     "currency_code": "USD" },
+    { "id": "acct-14", "name": "TFSA Investment",     "masked_number": "8821", "balance": 23410.55, "available_balance": 23410.55, "type": "INVESTMENT", "currency_code": "USD" }
+  ],
+  "recent_transactions": [
+    { "id": "txn-114", "account_id": "acct-11", "description": "Tim Hortons",         "amount": -3.45,   "posted_date": "2026-06-08T07:48:00Z", "category": "dining",   "merchant_name": "Tim Hortons" },
+    { "id": "txn-113", "account_id": "acct-11", "description": "Payroll \u2014 Sisystems", "amount": 2750.00, "posted_date": "2026-06-06T08:00:00Z", "category": "income",   "merchant_name": null },
+    { "id": "txn-112", "account_id": "acct-13", "description": "Amazon.ca",           "amount": -64.20,  "posted_date": "2026-06-05T19:30:00Z", "category": "shopping", "merchant_name": "Amazon" }
+  ]
+}
