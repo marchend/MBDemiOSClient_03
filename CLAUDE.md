@@ -44,7 +44,12 @@ Scripts/
 AcmeBank/
   App/                          # @main entry point (implemented)
   ContentView.swift             # Hello World placeholder (implemented)
-  Info.plist                    # Committed plist with __*_UNSET__ defaults for Okta keys (implemented)
+  Info.plist                    # Committed plist with __*_UNSET__ defaults for Okta keys + API_BASE_URL (implemented)
+  Home/                         # Home dashboard feature (implemented)
+    Models/                     # HomeDashboard, Customer, Account, Transaction (wire-contract Codables)
+    Repository/                 # HomeRepositoryProtocol seam + BFFHomeRepository + APIError
+    ViewModel/                  # HomeViewModel, HomeState
+    View/                       # HomeView + Components/ (BrandBar, GreetingHeader, AccountsSection, …)
   Sources/
     AcmeBankApp.swift           # @main composition root; injects AppCoordinator into env (implemented)
     Auth/
@@ -75,7 +80,6 @@ AcmeBank/
     Remote/                     # APIRepository implementations (deferred)
     Mock/                       # MockRepository implementations (deferred)
   Features/
-    Home/                       # HomeView, HomeViewModel, HomeCoordinator (deferred)
     Accounts/                   # (deferred)
     Transfer/                   # (deferred)
     Cards/                      # (deferred)
@@ -84,6 +88,9 @@ AcmeBank/
 AcmeBankTests/                  # XCTest unit tests
 AcmeBankUITests/                # XCUITest critical-flow tests
   SignInToLandingUITests.swift  # End-to-end Okta sign-in → Landing; XCTSkipUnless OKTA_ISSUER (implemented PR 4)
+  HomeLogoutUITests.swift       # Login → Home → Log out → Login → second user → Home (implemented)
+  Support/
+    LiveBFFSmokeTest.swift      # Developer-only live GET /v1/home; gated by RUN_LIVE_BFF_SMOKE=1 (implemented)
 ```
 
 ## Planned Architecture
@@ -162,6 +169,30 @@ AppCoordinator  ← observed by RootView
   a light-red row with `exclamationmark.triangle.fill`. Banner clears via
   `LoginViewModel.onFieldEdit()` on the next keystroke in either field.
 
+### Home dashboard (implemented)
+- The screen lives in `AcmeBank/Home/` — `Models/` for the BFF wire-contract
+  Codables (`HomeDashboard`, `Customer`, `Account`, `Transaction`),
+  `Repository/` for the `HomeRepositoryProtocol` seam and its production
+  `BFFHomeRepository`, `ViewModel/` for `HomeViewModel` + `HomeState`, and
+  `View/` for `HomeView` + the per-section `Components/`.
+- `HomeViewModel` depends ONLY on `HomeRepositoryProtocol`; that's the seam.
+  Unit tests inject a fixture-backed stub; the production composition root
+  injects `BFFHomeRepository`. Never wire a fixture repo on the happy path.
+- `BFFHomeRepository` reads `API_BASE_URL` from the app bundle's `Info.plist`
+  (the `API_BASE_URL` key). The value is injected by CI / a build script and
+  is NEVER hardcoded in source. The convenience init returns `nil` when the
+  key is missing or malformed so the coordinator can surface a configuration
+  error instead of force-unwrapping.
+- **No colours outside `BankPalette`.** Every `foregroundStyle`, `fill`, and
+  `background` in `Home/` must resolve through `BankPalette` (navy / white /
+  greys). Amounts are monochrome — NO semantic red/green. New components in
+  `Home/View/Components/` must follow the same rule; a hardcoded
+  `.red` / `.green` / system colour anywhere under `Home/` is a review-block.
+- Home accessibility identifiers (consumed by `HomeLogoutUITests`):
+  `home.screen` (root), `home.logout` (footer button), `home.accounts.list`
+  (accounts section container), `home.account.row.<index>` (per row),
+  `home.error.retry` (error-state Retry button).
+
 ### Networking Layer (deferred — future PR)
 - `APIClient` wraps `URLSession`; decodes with `.convertFromSnakeCase` + `.iso8601`.
 - `APIRouter` enum expresses every endpoint with path, method, body, queryItems.
@@ -186,6 +217,9 @@ AppCoordinator  ← observed by RootView
   `XCTSkipUnless(ProcessInfo.processInfo.environment["OKTA_ISSUER"]?.isEmpty == false, ...)`
   in `setUpWithError` and forward the `OKTA_*` vars to `app.launchEnvironment` so
   the simulator process sees them too.
+- Live-network smoke checks (e.g. `AcmeBankUITests/Support/LiveBFFSmokeTest.swift`)
+  must be gated by an opt-in env var (`RUN_LIVE_BFF_SMOKE=1`) so CI never hits
+  the live BFF; developers run them locally before closing the story.
 
 ### Keychain + CI Note (implemented — entitlements stub in this PR)
 Any Keychain query MUST include `kSecUseDataProtectionKeychain: true`. This is required
@@ -195,7 +229,6 @@ for CI (`CODE_SIGNING_ALLOWED=NO` simulator) — without this flag `SecItem*` re
 through, so the flag is present by construction.
 
 ## Deferred Work
-- Home Dashboard + BFF integration (`HomeView`, `HomeViewModel`, `HomeCoordinator`) — future PR
 - Token refresh (`AuthService.refreshTokenIfNeeded`, `RequestInterceptor`, `AppNotification.sessionExpired`) — future PR
 - Networking layer (`APIClient`, `APIRouter`, `APIError`, `RequestInterceptor`) — future PR
 - Domain models (`Account`, `Transaction`, `Customer`, `TransferRequest`) — future PR

@@ -117,6 +117,53 @@ xcodebuild build \
 > (recipes 1 + 2), or pass the vars per-invocation on the command line
 > (recipe 3).
 
+## Running against a live BFF
+
+The Home dashboard fetches `GET /v1/home` from the URL stored under the
+`API_BASE_URL` key in the app's built `Info.plist`. The committed
+`AcmeBank/Info.plist` ships with a placeholder; a real BFF URL is wired
+in one of two ways:
+
+1. **Edit the value into your local `Info.plist`** (or override it via
+   an xcconfig that sets `API_BASE_URL`) — the `BFFHomeRepository`
+   convenience init reads `bundle.object(forInfoDictionaryKey:
+   "API_BASE_URL")` at app start. Never commit a real URL into the
+   source plist; treat it the same way as the `OKTA_*` env vars.
+2. **Inject it from CI** the same way the `OKTA_*` script does — by
+   `plutil -replace`ing the key in `$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH`
+   after "Process Info.plist" runs.
+
+### Gated live-BFF smoke test
+
+`AcmeBankUITests/Support/LiveBFFSmokeTest.swift` performs a REAL
+`GET /v1/home` against the configured `API_BASE_URL` using a real Okta
+access token, and asserts the response decodes into the
+`HomeDashboard` shape with at least one account. This is the verifier
+to run **before calling the Home story done** — unit tests use
+fixtures, XCUITests use the UI, but only this test confirms that the
+deployed BFF still matches the wire contract the app expects.
+
+The test is **skipped by default** so CI never hits the live BFF.
+Opt in by setting `RUN_LIVE_BFF_SMOKE=1`, along with `API_BASE_URL`
+and a real Okta access token:
+
+```bash
+RUN_LIVE_BFF_SMOKE=1 \
+API_BASE_URL="https://bff.example.com" \
+OKTA_ACCESS_TOKEN="<paste-a-live-token>" \
+xcodebuild test \
+  -scheme AcmeBank \
+  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:AcmeBankUITests/LiveBFFSmokeTest \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Obtain `OKTA_ACCESS_TOKEN` out-of-band — e.g. with the Okta CLI, with
+a `curl` against your tenant's `/v1/token` endpoint, or by signing
+into the app once and reading the token from the Keychain. The token
+is read from the test runner's `ProcessInfo.environment`; it is never
+committed and never written into any plist.
+
 ## Project Structure
 
 | Path | Description |
@@ -125,9 +172,11 @@ xcodebuild build \
 | `Scripts/inject_okta_config.sh` | Build-phase script that bridges `OKTA_*` env vars → the built Info.plist in `$BUILT_PRODUCTS_DIR` |
 | `AcmeBank/` | App source (SwiftUI, MVVM + Coordinator) |
 | `AcmeBank/Sources/Auth/OktaConfig.swift` | Runtime view of injected Okta tenant config |
-| `AcmeBank/Info.plist` | Committed Info.plist with `__*_UNSET__` defaults for the four Okta keys — NEVER mutated by the build |
+| `AcmeBank/Home/` | Home dashboard feature (`Models/`, `Repository/`, `ViewModel/`, `View/`) |
+| `AcmeBank/Info.plist` | Committed Info.plist with `__*_UNSET__` defaults for the four Okta keys and the `API_BASE_URL` key — NEVER mutated by the build |
 | `AcmeBankTests/` | XCTest unit tests |
 | `AcmeBankUITests/` | XCUITest end-to-end flow tests |
+| `AcmeBankUITests/Support/LiveBFFSmokeTest.swift` | Developer-only live BFF smoke check (gated by `RUN_LIVE_BFF_SMOKE=1`) |
 | `CLAUDE.md` / `AGENT.md` | Full architecture context for AI agents |
 
 ## Notes
