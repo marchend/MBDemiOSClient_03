@@ -35,7 +35,7 @@ extension AppCoordinator: SessionCoordinating {
     /// method so analytics / a future toast can distinguish it from
     /// the user-initiated case.
     func handleSessionExpired() {
-        signOutInternal()
+        performSignOutEffect()
     }
 
     // Note: the existing `signOut()` instance method on
@@ -49,12 +49,24 @@ extension AppCoordinator: SessionCoordinating {
 
     /// Internal helper kept private to this file: the single piece of
     /// routing logic that both protocol entry points funnel through.
-    /// Today it is a one-line delegate to the existing
-    /// `signOut()` method on `AppCoordinator`. Extracting it gives a
-    /// future PR a single place to hook additional sign-out side
-    /// effects (e.g. clearing an in-memory dashboard cache) without
-    /// having to touch both protocol methods.
-    private func signOutInternal() {
+    /// Today it is a one-line delegate to the **concrete**
+    /// `AppCoordinator.signOut()` instance method (NOT a recursive
+    /// call into the `SessionCoordinating.signOut()` protocol
+    /// requirement — Swift dispatches the unqualified `signOut()` in
+    /// this extension body to the concrete instance method on the
+    /// type being extended). Extracting it gives a future PR a single
+    /// place to hook additional sign-out side effects (e.g. clearing
+    /// an in-memory dashboard cache) without having to touch both
+    /// protocol methods.
+    ///
+    /// Named `performSignOutEffect()` rather than `signOutInternal()`
+    /// so the name visibly distinguishes it from the protocol method
+    /// it wraps and reads as "the shared effect both paths perform",
+    /// not "another sign-out entry point".
+    private func performSignOutEffect() {
+        // Dispatches to the concrete `AppCoordinator.signOut()`
+        // instance method defined on the base type — see doc comment
+        // above for why this is not recursive.
         signOut()
     }
 }

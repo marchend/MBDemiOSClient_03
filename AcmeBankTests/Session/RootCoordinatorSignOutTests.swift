@@ -1,40 +1,10 @@
 import XCTest
 @testable import AcmeBank
 
-/// Spy `KeychainStoring` that records every `clear()` call so the
-/// sign-out tests can prove the Okta credential / access token is
-/// wiped exactly once on both the voluntary and involuntary paths.
-///
-/// Mirrors the spy used in `AppCoordinatorTests` — kept private to
-/// this file so the two test files stay independent (no shared
-/// fixture surface to break).
-private final class SpyKeychainStore: KeychainStoring {
-    private(set) var clearCallCount = 0
-    private(set) var storeCallCount = 0
-    var clearError: Error?
-
-    private var accessToken: String?
-    private var refreshToken: String?
-
-    func storeTokens(accessToken: String, refreshToken: String?) throws {
-        storeCallCount += 1
-        self.accessToken = accessToken
-        self.refreshToken = refreshToken
-    }
-
-    func loadRefreshToken() throws -> String? {
-        return refreshToken
-    }
-
-    func clear() throws {
-        clearCallCount += 1
-        if let error = clearError {
-            throw error
-        }
-        accessToken = nil
-        refreshToken = nil
-    }
-}
+// `SpyKeychainStore` lives in `AcmeBankTests/TestDoubles/` so a
+// single definition is shared with `AppCoordinatorTests`. See that
+// file's doc comment for why we don't use a real `KeychainStore` on
+// CI.
 
 private func makeSession() -> UserSession {
     return UserSession(

@@ -1,42 +1,10 @@
 import XCTest
 @testable import AcmeBank
 
-/// Spy `KeychainStoring` that records every `clear()` call so the
-/// sign-out test can assert the Keychain was wiped exactly once.
-///
-/// We do NOT use a real `KeychainStore` here: the CI simulator runs
-/// with `CODE_SIGNING_ALLOWED=NO`, which strips the
-/// `application-identifier` entitlement and causes every `SecItem*`
-/// call to return -34018 (errSecMissingEntitlement). Injecting a
-/// `KeychainStoring` spy lets us assert on the coordinator's
-/// orchestration directly.
-private final class SpyKeychainStore: KeychainStoring {
-    private(set) var clearCallCount = 0
-    private(set) var storeCallCount = 0
-    var clearError: Error?
-
-    private var accessToken: String?
-    private var refreshToken: String?
-
-    func storeTokens(accessToken: String, refreshToken: String?) throws {
-        storeCallCount += 1
-        self.accessToken = accessToken
-        self.refreshToken = refreshToken
-    }
-
-    func loadRefreshToken() throws -> String? {
-        return refreshToken
-    }
-
-    func clear() throws {
-        clearCallCount += 1
-        if let error = clearError {
-            throw error
-        }
-        accessToken = nil
-        refreshToken = nil
-    }
-}
+// `SpyKeychainStore` lives in `AcmeBankTests/TestDoubles/` so a
+// single definition is shared with `RootCoordinatorSignOutTests`. See
+// that file's doc comment for the rationale (CI runs without code
+// signing, so a real keychain returns -34018 on every call).
 
 /// Spy `AuthCoordinating` that records its inputs and returns a
 /// canned `AuthResult`. Lets `AppCoordinator.signIn` tests assert the
