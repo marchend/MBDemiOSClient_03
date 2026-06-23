@@ -3,18 +3,18 @@ import SwiftUI
 /// SwiftUI entry point.
 ///
 /// Composition root for the app: owns the single `AppCoordinator`
-/// `@StateObject` and renders either `LoginView` (no session) or
-/// `LandingView` (session present). The coordinator is also injected
-/// into the SwiftUI environment via `.environmentObject(_:)` so that
-/// `LoginView` can pull it with `@EnvironmentObject` to call
-/// `handleSignIn(_:)` on a successful sign-in — wiring the success
-/// callback in this file again would force a re-edit of the
-/// composition root every time the login flow grows.
+/// `@StateObject` and renders `RootCoordinatorView`, which switches
+/// between `LoginView` (no session) and `HomeView` (signed in).
+///
+/// The coordinator is injected into the SwiftUI environment via
+/// `.environmentObject(_:)` so `LoginView`, `RootCoordinatorView`,
+/// and any future authenticated view can pull it with
+/// `@EnvironmentObject` instead of being passed down by hand.
 ///
 /// **Why this file owns the @main and not `AcmeBank/App/AcmeBankApp.swift`.**
 /// PR 3 collapses the original bootstrap entry point into this single
 /// file. Shipping two `@main` `App` structs is a compile error
-/// ("'main' attribute can only apply to one type in a module"), so
+/// (\"'main' attribute can only apply to one type in a module\"), so
 /// the original `AcmeBank/App/AcmeBankApp.swift` is removed in the same
 /// PR.
 ///
@@ -26,12 +26,18 @@ import SwiftUI
 /// composition root and inject that single reference into both the
 /// probe and the coordinator (and through the coordinator into
 /// `AuthCoordinator`), so the entire process operates on one store.
+///
+/// **HomeView is the post-login surface.** PR 3 replaces the previous
+/// `LandingView` placeholder with the real `HomeView`, wired to the
+/// live `BFFHomeRepository` via `RootCoordinatorView`. The composition
+/// root is the only place the real repository is instantiated - no
+/// stubs ship in the app target.
 @main
 struct AcmeBankApp: App {
 
     /// Single Keychain reference shared by every consumer below. Built
     /// as a static so the same instance feeds both the `@StateObject`
-    /// initializer and the launch-time silent-refresh probe — SwiftUI's
+    /// initializer and the launch-time silent-refresh probe \u2014 SwiftUI's
     /// `@StateObject` autoclosure runs once per `App` lifetime, and we
     /// need the same object visible to `attemptSilentRefreshOnLaunch`.
     private static let sharedKeychain: KeychainStoring = KeychainStore()
@@ -49,7 +55,11 @@ struct AcmeBankApp: App {
     /// need a concrete `DirectAuthenticating` to construct the
     /// coordinator, so we build one against the live config when
     /// available and a placeholder otherwise.
-    private static let sharedAuth: AuthCoordinating = AuthCoordinator(
+    ///
+    /// Exposed (`internal`) so `RootCoordinatorView` can hand the same
+    /// instance to `LoginView` without re-resolving the coordinator
+    /// graph.
+    static let sharedAuth: AuthCoordinating = AuthCoordinator(
         service: makeOktaService(),
         keychain: sharedKeychain
     )
@@ -71,7 +81,7 @@ struct AcmeBankApp: App {
                 scopes: scopes
             )
         case .notConfigured:
-            // Placeholder values — `AuthCoordinator` short-circuits on
+            // Placeholder values \u2014 `AuthCoordinator` short-circuits on
             // `.notConfigured` before the service is called, so these
             // URLs are never actually used. The `!`s are safe because
             // the string literals are valid URLs.
@@ -88,13 +98,6 @@ struct AcmeBankApp: App {
     /// the `App` struct as a `@StateObject` so its lifetime matches the
     /// process and the same instance survives every SwiftUI re-render
     /// of the root scene.
-    ///
-    /// `AppCoordinator` receives the shared keychain reference AND the
-    /// shared `AuthCoordinating`. The sign-in path is:
-    /// `LoginView.signIn → LoginViewModel.signIn → AuthCoordinator.signIn`,
-    /// then on success the View calls `AppCoordinator.handleSignIn`
-    /// (pulled from `@EnvironmentObject`) to flip the root view to
-    /// `LandingView`.
     @StateObject private var coordinator = AppCoordinator(
         keychain: AcmeBankApp.sharedKeychain,
         auth: AcmeBankApp.sharedAuth
@@ -102,28 +105,11 @@ struct AcmeBankApp: App {
 
     var body: some Scene {
         WindowGroup {
-            rootView
+            RootCoordinatorView(auth: AcmeBankApp.sharedAuth)
                 .environmentObject(coordinator)
                 .task {
                     await attemptSilentRefreshOnLaunch()
                 }
-        }
-    }
-
-    /// Pick the screen based on the coordinator's session state. Using
-    /// `@ViewBuilder` here keeps both branches as concrete `View`
-    /// types without an `AnyView` wrapper.
-    @ViewBuilder
-    private var rootView: some View {
-        if let session = coordinator.session {
-            LandingView(session: session)
-        } else {
-            // PR 4 wires the production sign-in path: the View pulls
-            // `AppCoordinator` via `@EnvironmentObject` and calls
-            // `viewModel.signIn(...) → appCoordinator.handleSignIn(...)`
-            // inside its Sign In button action. The composition root
-            // only has to hand the View the shared `AuthCoordinating`.
-            LoginView(auth: AcmeBankApp.sharedAuth)
         }
     }
 
@@ -132,8 +118,8 @@ struct AcmeBankApp: App {
     /// Today this only checks whether a refresh token is persisted; a
     /// future PR will swap in a real `AuthService.refreshTokenIfNeeded`
     /// that mints a fresh `UserSession` from it and feeds it into
-    /// `coordinator.handleSignIn(_:)`. Failures — missing token,
-    /// keychain error, network error — are SWALLOWED here: they
+    /// `coordinator.handleSignIn(_:)`. Failures \u2014 missing token,
+    /// keychain error, network error \u2014 are SWALLOWED here: they
     /// simply leave `coordinator.session == nil`, which renders
     /// `LoginView`. We must never crash on a launch-time read.
     ///
@@ -145,7 +131,7 @@ struct AcmeBankApp: App {
                 return
             }
             // Hook point for the future refresh flow. Intentionally
-            // a no-op today — see the doc comment above.
+            // a no-op today \u2014 see the doc comment above.
         } catch {
             #if DEBUG
             print("AcmeBankApp: silent-refresh probe failed: \(error)")
