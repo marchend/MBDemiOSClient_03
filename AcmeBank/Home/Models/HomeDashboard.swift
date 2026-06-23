@@ -25,10 +25,16 @@ struct HomeDashboard: Codable, Equatable {
 /// "couldn't read the response" even though every account + transaction
 /// decoded fine. Neither field is rendered on Home today; keep them
 /// optional regardless.
+///
+/// `segment` is an optional CRM tier label (e.g. "PREMIER", "STANDARD").
+/// The BFF omits the key entirely for customers without a segment, so
+/// the field must be optional. `.convertFromSnakeCase` handles the
+/// JSON key automatically; no `CodingKeys` update is needed.
 struct Customer: Codable, Equatable {
     let id: String
     let firstName: String
     let lastName: String
     let email: String?
     let phoneNumber: String?
+    let segment: String?
 }

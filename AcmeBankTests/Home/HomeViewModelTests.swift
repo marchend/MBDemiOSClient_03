@@ -79,7 +79,8 @@ private func makeDashboard(customerId: String = "cust-1") -> HomeDashboard {
             firstName: "Jane",
             lastName: "Doe",
             email: "jane@example.com",
-            phoneNumber: nil
+            phoneNumber: nil,
+            segment: nil
         ),
         accounts: [],
         recentTransactions: []
@@ -267,5 +268,73 @@ final class HomeViewModelTests: XCTestCase {
 
         XCTAssertEqual(repo.fetchCallCount, 2,
                        "retry() must re-invoke fetchHome() after a transport error.")
+    }
+
+    // MARK: - Segment: Customer JSON decode
+
+    /// JSON with `"segment":"PREMIER"` decodes to `customer.segment == "PREMIER"`.
+    func testCustomerDecodesWithSegment() throws {
+        let json = """
+        {
+          "id": "cust-seg-1",
+          "first_name": "Alex",
+          "last_name": "Premier",
+          "email": null,
+          "phone_number": null,
+          "segment": "PREMIER"
+        }
+        """.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let customer = try decoder.decode(Customer.self, from: json)
+
+        XCTAssertEqual(customer.segment, "PREMIER",
+                       "Customer JSON with 'segment':'PREMIER' must decode to segment == 'PREMIER'.")
+    }
+
+    /// JSON without a `segment` key decodes to `customer.segment == nil` with no error thrown.
+    func testCustomerDecodesWithoutSegment() throws {
+        let json = """
+        {
+          "id": "cust-seg-2",
+          "first_name": "Jordan",
+          "last_name": "Standard",
+          "email": null,
+          "phone_number": null
+        }
+        """.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let customer = try decoder.decode(Customer.self, from: json)
+
+        XCTAssertNil(customer.segment,
+                     "Customer JSON without a 'segment' key must decode to segment == nil, with no error thrown.")
+    }
+
+    // MARK: - Segment: SignedInCard view logic
+
+    /// `SignedInCard.badgeSegment` returns the customer's segment when present.
+    ///
+    /// Tests the computed property directly — same lightweight pattern as
+    /// `fullName`/`initials` — so a regression in the `if let` guard in the
+    /// view body is caught without a simulator or snapshot.
+    func testSignedInCardShowsBadgeWhenSegmentPresent() {
+        let customer = HomeDashboardFixtures.previewDashboardWithSegment.customer
+        let card = SignedInCard(customer: customer)
+
+        XCTAssertEqual(card.badgeSegment, "PREMIER",
+                       "SignedInCard.badgeSegment must equal 'PREMIER' when customer.segment is 'PREMIER'.")
+    }
+
+    /// `SignedInCard.badgeSegment` returns `nil` when the customer has no segment,
+    /// meaning `SegmentBadgeView` is never instantiated.
+    func testSignedInCardHidesBadgeWhenSegmentNil() {
+        let customer = HomeDashboardFixtures.previewDashboardNoSegment.customer
+        let card = SignedInCard(customer: customer)
+
+        XCTAssertNil(card.badgeSegment,
+                     "SignedInCard.badgeSegment must be nil when customer.segment is nil so no SegmentBadgeView is rendered.")
     }
 }
