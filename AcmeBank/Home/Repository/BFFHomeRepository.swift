@@ -58,7 +58,15 @@ final class BFFHomeRepository: HomeRepositoryProtocol {
         guard
             let raw = bundle.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
             !raw.isEmpty,
-            let url = URL(string: raw)
+            // Reject the build-script sentinel (``__API_BASE_URL_UNSET__``,
+            // written when the API_BASE_URL env var is unset at build time) and
+            // any value without a URL scheme. Either would otherwise produce a
+            // scheme-less ``URL`` that fails every request as an opaque transport
+            // error; returning nil routes to UnreachableHomeRepository instead,
+            // which is the explicit "not configured" path.
+            raw != "__API_BASE_URL_UNSET__",
+            let url = URL(string: raw),
+            url.scheme != nil
         else {
             return nil
         }
