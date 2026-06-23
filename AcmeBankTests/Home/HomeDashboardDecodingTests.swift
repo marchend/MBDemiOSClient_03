@@ -128,6 +128,59 @@ final class HomeDashboardDecodingTests: XCTestCase {
         XCTAssertEqual(wrapper.type, .unknown)
     }
 
+    // MARK: - Real BFF wire shape: lowercase type + null email decode
+
+    func test_realBffShape_lowercaseType_andNullEmail_decode() throws {
+        // The deployed BFF lowercases account type on the wire ("chequing")
+        // and the orchestrator's customer projection omits email (null).
+        // Before the fix this threw valueNotFound on `email` and mapped the
+        // type to .unknown — blanking Home with "couldn't read the response"
+        // even though every other field decoded. This is the captured real
+        // /v1/home payload shape (bankuser.one).
+        let json = """
+        {
+          "customer": {
+            "id": "cust-1002",
+            "first_name": "Bankuser",
+            "last_name": "One",
+            "email": null,
+            "phone_number": null
+          },
+          "accounts": [
+            {
+              "id": "acct-11",
+              "name": "Everyday Chequing",
+              "masked_number": "3310",
+              "balance": 1542.88,
+              "available_balance": 1542.88,
+              "type": "chequing",
+              "currency_code": "USD"
+            }
+          ],
+          "recent_transactions": [
+            {
+              "id": "txn-14",
+              "account_id": "acct-11",
+              "description": "ATM Withdrawal",
+              "amount": -200.00,
+              "posted_date": "2026-06-07T11:00:00Z",
+              "category": null,
+              "merchant_name": null
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let dashboard = try makeDecoder().decode(HomeDashboard.self, from: json)
+        XCTAssertNil(dashboard.customer.email)
+        XCTAssertEqual(dashboard.customer.firstName, "Bankuser")
+        XCTAssertEqual(dashboard.accounts.count, 1)
+        // lowercase wire value still resolves to the typed case
+        XCTAssertEqual(dashboard.accounts[0].type, .chequing)
+        XCTAssertEqual(dashboard.accounts[0].name, "Everyday Chequing")
+        XCTAssertEqual(dashboard.recentTransactions.count, 1)
+    }
+
     // MARK: - Nullable fields round-trip as nil
 
     func test_nullableFields_decodeAsNil() throws {
