@@ -68,7 +68,16 @@ final class BFFHomeRepository: HomeRepositoryProtocol {
     // MARK: - HomeRepositoryProtocol
 
     func fetchHome() async throws -> HomeDashboard {
-        let request = buildRequest()
+        // Fail fast when there is no live session. We refuse to put a
+        // bearer-less request on the wire even if the BFF would happen
+        // to accept it (staging misconfiguration, etc.) — the JWT is
+        // what scopes the response to *this* user, so a missing token
+        // is a security-relevant local error, not a network error.
+        guard let token = accessTokenProvider(), !token.isEmpty else {
+            throw APIError.unauthorized
+        }
+
+        let request = buildRequest(token: token)
 
         let data: Data
         let response: URLResponse
@@ -105,17 +114,17 @@ final class BFFHomeRepository: HomeRepositoryProtocol {
 
     // MARK: - Request building
 
-    private func buildRequest() -> URLRequest {
-        // `appendingPathComponent` preserves whatever path the
-        // `API_BASE_URL` already carries (some environments host the
-        // BFF under a sub-path), then tacks on `/v1/home`.
-        let url = baseURL.appendingPathComponent("v1/home")
+    private func buildRequest(token: String) -> URLRequest {
+        // `URL.appending(path:)` (iOS 16+) is the non-deprecated
+        // replacement for `appendingPathComponent`. It preserves any
+        // sub-path the `API_BASE_URL` already carries (some
+        // environments host the BFF under e.g. `/bff`), then tacks on
+        // `v1/home` without percent-encoding the embedded slash.
+        let url = baseURL.appending(path: "v1/home")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let token = accessTokenProvider(), !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return request
     }
 

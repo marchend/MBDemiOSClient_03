@@ -93,6 +93,78 @@ final class BFFHomeRepositoryTests: XCTestCase {
         )
     }
 
+    // MARK: - Base URL with an existing sub-path is preserved
+
+    /// Pins the documented behaviour that `BFFHomeRepository` preserves
+    /// any path segment already present on `API_BASE_URL` (some
+    /// environments host the BFF under e.g. `/bff`) and only appends
+    /// `v1/home`. Guards against future refactors of the URL-building
+    /// helper from regressing this case.
+    func test_fetchHome_baseUrlWithSubPath_preservesSubPath() async throws {
+        let body = try loadFixtureData(named: "home_bankuser_one")
+        StubURLProtocol.stub = StubURLProtocol.Stub(statusCode: 200, body: body)
+
+        let repo = makeRepository(baseURL: "https://api.example.com/bff")
+        _ = try await repo.fetchHome()
+
+        guard let captured = StubURLProtocol.lastRequest else {
+            XCTFail("Expected at least one captured request")
+            return
+        }
+        XCTAssertEqual(
+            captured.url?.absoluteString,
+            "https://api.example.com/bff/v1/home"
+        )
+    }
+
+    // MARK: - Nil / empty token: fail-fast, no network call
+
+    /// Security: when there is no live session (`accessTokenProvider`
+    /// returns `nil`), `fetchHome()` must throw `.unauthorized` BEFORE
+    /// any network activity. We assert both the typed error AND that
+    /// the stub never saw a request — proving no bearer-less call hit
+    /// the wire.
+    func test_fetchHome_nilToken_throwsUnauthorized() async {
+        StubURLProtocol.stub = StubURLProtocol.Stub(statusCode: 200, body: Data())
+        let repo = makeRepository(token: nil)
+
+        do {
+            _ = try await repo.fetchHome()
+            XCTFail("Expected APIError.unauthorized")
+        } catch APIError.unauthorized {
+            // expected
+        } catch {
+            XCTFail("Expected APIError.unauthorized, got \(error)")
+        }
+
+        XCTAssertNil(
+            StubURLProtocol.lastRequest,
+            "fetchHome() must not issue a network request when the access token is nil"
+        )
+    }
+
+    /// Same fail-fast contract for an empty-string token — an empty
+    /// `Authorization: Bearer ` header would be semantically identical
+    /// to no header at all, so we treat it the same way.
+    func test_fetchHome_emptyToken_throwsUnauthorized() async {
+        StubURLProtocol.stub = StubURLProtocol.Stub(statusCode: 200, body: Data())
+        let repo = makeRepository(token: "")
+
+        do {
+            _ = try await repo.fetchHome()
+            XCTFail("Expected APIError.unauthorized")
+        } catch APIError.unauthorized {
+            // expected
+        } catch {
+            XCTFail("Expected APIError.unauthorized, got \(error)")
+        }
+
+        XCTAssertNil(
+            StubURLProtocol.lastRequest,
+            "fetchHome() must not issue a network request when the access token is empty"
+        )
+    }
+
     // MARK: - 401: typed .unauthorized
 
     func test_fetchHome_401_throwsUnauthorized() async {
